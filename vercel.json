@@ -49,11 +49,5 @@
       "destination": "/index.html"
     }
   ],
-  "crons": [
-    {
-      "path": "/api/cron/notifications",
-      "schedule": "*/5 * * * *"
-    }
-  ],
   "outputDirectory": "public"
 }

@@ -1,6 +1,6 @@
 # Suwat Clinic v2 — Supabase + Vercel + LINE OA เดิม
 
-**เวอร์ชัน:** v2.0 — Source code สำหรับ GitHub/Vercel
+**เวอร์ชัน:** v2.1 (No scheduled Cron for Hobby testing) — Source code สำหรับ GitHub/Vercel
 
 โปรเจกต์นี้ย้ายออกจาก SQLite แล้ว โดยใช้ Supabase PostgreSQL ผ่าน Server-side API (Vercel Functions) พร้อม SQL สำหรับจองคิวแบบ Transaction, จองสต็อกแบบ FEFO, ระบบพนักงานรับทราบงาน, ร้านค้าและระบบแจ้งเตือน LINE OA เดิม ทั้ง UI ไทย/อังกฤษยังเหมือนเดิม
 
@@ -59,7 +59,7 @@ on conflict (auth_user_id) do nothing;
 | `SUPABASE_PUBLISHABLE_KEY` | Publishable Key ของโปรเจกต์ Supabase |
 | `SUPABASE_SECRET_KEY` | **Secret Key ตัวใหม่หลัง Rotate** (เก็บแบบ Secret) |
 | `PUBLIC_BASE_URL` | `https://โดเมนโปรเจกต์.vercel.app` |
-| `CRON_SECRET` | สุ่มข้อความยาวอย่างน้อย 32 ตัวอักษรสำหรับงานส่ง LINE ซ้ำ |
+| `CRON_SECRET` | สำหรับล็อก endpoint ส่ง LINE ซ้ำ หากยังไม่ใช้ scheduler จะเว้นว่างไว้ชั่วคราวก็ได้ |
 | `LINE_LOGIN_CHANNEL_ID` | Channel ID จาก LINE Login ของ OA เดิม |
 | `LINE_LIFF_ID` | LIFF ID |
 | `LINE_CHANNEL_ACCESS_TOKEN` | Token ของ Messaging API Channel ของ OA เดิม |
@@ -72,6 +72,8 @@ on conflict (auth_user_id) do nothing;
 6. กด **Deploy** หรือ **Redeploy** หากเคย Deploy ไปแล้ว
 7. เปิดเว็บ `https://โดเมนโปรเจกต์.vercel.app/api/health` หากเชื่อมต่อ Supabase และรัน SQL สำเร็จ จะได้ `{"ok":true,"database":"supabase",...}`
 8. เปิดหน้า `/staff` แล้ว Login ด้วยอีเมล Owner ที่สร้างในขั้น B
+
+**ข้อจำกัดในการใช้งานจริง:** Vercel Hobby ใช้ได้สำหรับงานส่วนบุคคลที่ไม่ใช่เชิงพาณิชย์เท่านั้น สำหรับคลินิกที่เปิดรับจองหรือขายสินค้า ต้องเลือกแพ็กเกจที่รองรับธุรกิจ เช่น Vercel Pro ก่อนเปิดใช้งานลูกค้าจริง
 
 **คำเตือน:** Secret Key เดิมที่เคยส่งในแชตถือว่าเปิดเผยแล้ว ให้ยกเลิกและสร้างคีย์ใหม่ที่ Supabase → Settings → API Keys ก่อน Deploy และอย่าแปะคีย์ใหม่ลงใน GitHub หรือแชต
 
@@ -111,7 +113,7 @@ on conflict (auth_user_id) do nothing;
 - หลายคนซื้อสินค้าล็อตสุดท้ายพร้อมกัน ต้องไม่ตัดสต็อกติดลบ
 - ลูกค้าเห็นข้อมูลเฉพาะของตน ส่วนพนักงานเห็นเฉพาะข้อมูลตามสิทธิ์
 - LINE Flex Message ถึงลูกค้าและกลุ่ม LINE พนักงาน โดย **ไม่ส่งอาการผู้ป่วยในกลุ่ม**
-- Cron Notification Retry ทำงาน (ต้องมี `CRON_SECRET`; Cron ทุก 5 นาทีเหมาะกับ Vercel Pro)
+- เวอร์ชัน v2.1 สำหรับทดสอบบน Hobby ปิด **Cron ที่ตั้งเวลา** เพื่อแก้ปัญหา Deploy: ส่ง LINE แบบทันทีเมื่อมีการจอง/ออร์เดอร์ยังทำงานผ่าน `deliver()` หากส่งไม่สำเร็จ **ไม่มีการส่งซ้ำอัตโนมัติ** จนกว่าจะเปิด Scheduler ที่รองรับ แนะนำใช้ Vercel Pro สำหรับระบบคลินิกจริง
 - ตรวจ PDPA, การจัดเก็บข้อมูลสุขภาพ, ความยินยอม, retention, การสำรองข้อมูล, นโยบายคืนสินค้า, และข้อกฎหมายร้านขายผลิตภัณฑ์เสริมอาหาร
 
 ## H. รันทดสอบบนเครื่อง
@@ -144,7 +146,7 @@ suwat-clinic-supabase/
 ├─ sql/01_setup.sql          # Run ใน Supabase SQL Editor
 ├─ scripts/setup-richmenu.mjs
 ├─ tests/basic.test.mjs
-├─ vercel.json               # Vercel routing + cron
+├─ vercel.json               # Vercel routing (ไม่มี scheduled cron ใน v2.1)
 ├─ package.json
 ├─ .env.example              # Template เท่านั้น ไม่มี Secret จริง
 └─ README.md
@@ -157,5 +159,5 @@ suwat-clinic-supabase/
 - PostgreSQL RPC `sw_book` ใช้ Lock ป้องกันจองคิวเกิน; `sw_checkout` ใช้ Lock และ Transaction สำหรับ FEFO stock
 - Supabase Secret Key ใช้ฝั่ง API เท่านั้น, ฝั่ง Browser ไม่เรียกฐานข้อมูลโดยตรง
 - Staff Login ตรวจสอบรหัสผ่านด้วย **Supabase Auth** และอนุญาตเฉพาะรายชื่อใน `sw_staff`
-- ระบบแจ้ง LINE ใช้ Queue ใน `sw_notifications` และ Vercel Cron เพื่อ Retry
+- ระบบแจ้ง LINE ใช้ Queue ใน `sw_notifications` และพยายามส่งทันทีเมื่อเกิดรายการ; **v2.1 ปิด schedule ของ Cron** เพื่อผ่านการ Deploy บน Hobby แบบทดสอบเท่านั้น หากส่งล้มเหลวจะค้างใน Queue จนกว่าจะกำหนด Scheduler ที่รองรับ
 - ยังไม่ได้ทำ penetration test, production load test, หรือทดสอบเชื่อม Supabase/LINE จริงในบัญชีผู้ใช้
