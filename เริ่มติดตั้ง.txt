@@ -1,0 +1,15 @@
+SUWAT CLINIC v2 — ติดตั้งแบบสั้น
+
+1. แตกไฟล์ ZIP (อย่าอัปโหลด ZIP ทั้งไฟล์ขึ้น GitHub)
+2. เปิด README.md อ่านขั้นตอน A–H
+3. คัดลอกไฟล์ทั้งหมดในโฟลเดอร์นี้ไปยัง GitHub Repository ของคลินิก
+4. Supabase → SQL Editor → เปิด sql/01_setup.sql → Run
+5. Supabase Auth → สร้าง Owner Email/Password → เพิ่มบัญชีใน sw_staff ตาม README
+6. Vercel → Import GitHub Repository → Framework = Other → Add Environment Variables → Deploy
+7. เปิด /api/health ควรแสดง ok:true
+8. เชื่อม LINE OA เดิม (LINE Login, LIFF, Messaging API Webhook)
+9. เพิ่ม Twilio Verify จึงจะสามารถจองคิวและสั่งซื้อจริงได้
+
+*** สำคัญ: ต้องเปลี่ยน Supabase Secret Key ที่เคยส่งในแชต แล้วตั้งค่า Secret ตัวใหม่ใน Vercel เท่านั้น ***
+*** อย่าอัปโหลด .env, Secret Key หรือข้อมูลผู้ป่วยจริงลง GitHub ***
+*** ระบบร้านค้ายังเป็นการตรวจสอบชำระเงินโดยพนักงาน ไม่มีรับเงินอัตโนมัติ ***

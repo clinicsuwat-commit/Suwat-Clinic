@@ -1,91 +1,161 @@
-# Suwat Clinic — bilingual booking + store + staff MVP
+# Suwat Clinic v2 — Supabase + Vercel + LINE OA เดิม
 
-**Version:** 0.1.0 · **Languages:** ไทย / English · **Existing LINE OA:** yes, reuse it.
+**เวอร์ชัน:** v2.0 — Source code สำหรับ GitHub/Vercel
 
-A runnable, dependency-free Node 22+ prototype for customers, reception, store staff, and clinic owners. It includes real SQLite transactions for booking capacities and inventory allocation, a responsive interface, LINE LIFF authentication endpoints, the LINE Messaging API notification outbox, Twilio Verify integration hooks, and an optional Rich Menu image + setup script.
+โปรเจกต์นี้ย้ายออกจาก SQLite แล้ว โดยใช้ Supabase PostgreSQL ผ่าน Server-side API (Vercel Functions) พร้อม SQL สำหรับจองคิวแบบ Transaction, จองสต็อกแบบ FEFO, ระบบพนักงานรับทราบงาน, ร้านค้าและระบบแจ้งเตือน LINE OA เดิม ทั้ง UI ไทย/อังกฤษยังเหมือนเดิม
 
-## Start locally (Windows 11 or macOS/Linux)
+> ⚠️ **ข้อจำกัดที่ต้องรู้**: โค้ดผ่าน Automated Tests แต่ยังไม่ได้ Deploy หรือเชื่อมต่อกับฐานข้อมูล Supabase จริงของคุณจากสภาพแวดล้อมนี้ ต้องรัน SQL และตั้งค่า Environment Variables จึงทำงานได้ การจอง/สั่งซื้อต้องมี LINE Login และ SMS OTP จริง; การชำระเงินยังใช้ **ตรวจสอบด้วยพนักงาน** ไม่ใช่ Payment Gateway และยังไม่ควรใช้ข้อมูลผู้ป่วยจริงจนกว่าจะผ่านการตรวจสอบความปลอดภัย/PDPA และทดสอบใช้งานจริง
 
-1. Install **Node.js 22 or newer** (Node 22 contains built-in `node:sqlite`).
-2. Extract the ZIP, open the `suwat-clinic` folder.
-3. Double-click **`start.bat`** on Windows or run `bash start.sh` on macOS/Linux.
-4. Open **http://localhost:3000**.
+## A. อัปโหลดไฟล์ขึ้น GitHub (ทำทีละขั้น)
 
-The app runs in **local demo mode** by default, with six **sample products**, sample staff, and database `data/suwat-clinic.sqlite`. Local customer login is through **Try demo account**; no real LINE message, SMS, or payment will be sent unless you add the credentials and disable demo mode appropriately.
+1. ดาวน์โหลด ZIP แล้วคลิกขวา **Extract All** เพื่อแตกไฟล์
+2. เปิดโฟลเดอร์ `suwat-clinic-supabase` จะเห็น `api`, `lib`, `public`, `sql`, `package.json`, `vercel.json`, `.env.example` และ `README.md`
+3. ถ้าจะใช้ Repository เดิม ให้ **ลบไฟล์เก่า** ที่ไม่ใช้แล้ว ได้แก่ `server.mjs`, `lib/db.mjs`, `lib/config.mjs`, `data/` (รวมไฟล์ `.sqlite`), และ `start.bat`/`start.sh` ก่อนวางไฟล์ใหม่ อย่าลบไฟล์ใน `public/` ใหม่ที่ให้มานี้
+4. ใช้ **GitHub Desktop** เปิด Repository เดิม แล้วคัดลอก **เนื้อหาภายในโฟลเดอร์ที่แตก ZIP** ไปทับใน Repository เดิม (ไม่ใช่อัปโหลด ZIP ทั้งไฟล์)
+5. ใน GitHub Desktop คลิก **Commit to main** แล้ว **Push origin**
+6. ใช้ Repository แบบ **Private** และตรวจว่าไม่มีไฟล์ `.env`, Secret Key, ข้อมูลผู้ป่วย หรือ SQLite อยู่ในรายการที่จะ Commit
 
-Demo staff credentials (local demo only):
+อีกวิธี: สร้าง GitHub Repository ใหม่แบบ Private แล้วเลือก **Add file → Upload files** จากนั้นอัปโหลดไฟล์และโฟลเดอร์ที่แตก ZIP (อัปโหลดเป็นไฟล์ ไม่ใช่ ZIP)
 
-| Role | Username | Password |
-| --- | --- | --- |
-| Owner | `owner` | `demo1234` |
-| Reception | `reception` | `staff1234` |
-| Store | `store` | `store1234` |
+## B. ติดตั้งฐานข้อมูล (สำคัญที่สุด)
 
-**DO NOT use these demo passwords or `DEMO_MODE=true` on a public website.** The database and credentials in demo mode are not meant to store real customer, patient, or payment information.
+1. เปิด https://supabase.com/dashboard และเลือกโปรเจกต์ Suwat Clinic ที่คุณสร้างไว้
+2. เปิด **SQL Editor → New query**
+3. เปิดไฟล์ `sql/01_setup.sql`, คัดลอกทั้งหมดมาวาง และกด **Run**
+4. ใน Table Editor จะเห็น `sw_customers`, `sw_bookings`, `sw_slot_rules`, `sw_products`, `sw_inventory_lots`, `sw_orders`, `sw_staff`, `sw_tasks`, ฯลฯ
+5. ถ้าเคยสร้างตาราง `sc_*` จากไฟล์ MVP v1 ไว้ ตารางเหล่านั้นจะยังอยู่ แต่เวอร์ชัน v2 ใช้ `sw_*` เท่านั้น เพื่อไม่ลบข้อมูลเดิมโดยไม่ตั้งใจ
+6. **อย่าใส่ Supabase Secret Key ใน SQL Editor**, อย่าบันทึกกุญแจลับในไฟล์ ZIP
 
-### Pages
+### สร้างบัญชีเจ้าของคลินิก (Owner)
 
-- `/` — customer home; Thai/English switch
-- `/booking` — 3-step booking, daily capacities, notes, date override
-- `/shop` — sample supplement product cards, basket, manual-payment order request
-- `/appointments` — appointment history and cancellation
-- `/orders` — order history and shipment tracking number
-- `/account` — customer profile, phone verification when configured
-- `/staff` — staff login, task acknowledgments, management dashboard, booking and fulfillment status, stock lot creation, booking capacities
+1. ใน Supabase เปิด **Authentication → Users**
+2. กด **Add user** แล้วสร้างผู้ใช้ด้วย **อีเมลจริงและรหัสผ่านใหม่** (ยืนยันอีเมลตามการตั้งค่าของ Auth)
+3. เปิด **SQL Editor → New query** แล้วเรียกใช้คำสั่งต่อไปนี้โดยแทนอีเมล:
 
-## Reuse the **existing LINE Official Account**
-
-**Do not create a new LINE OA.** Enable Messaging API on the **existing** LINE Official Account using https://manager.line.biz/ (Settings > Messaging API). In https://developers.line.biz/console/ find the Messaging API channel that was created for the existing OA. Add a LINE Login channel in the **same Provider** if one does not yet exist. LINE Provider selection is effectively permanent, so verify the correct owner/Provider before creating anything.
-
-1. In LINE Developers, configure LINE Login + LIFF for this website. LIFF endpoint must be the **public HTTPS** root URL (e.g., `https://clinic.example/`) with the `openid` scope enabled. If LINE Login is in Developing mode, only testers can sign in; publish it when ready for customers.
-2. Add the existing OA as the linked official account where appropriate; ask customers to add the OA as friend to receive push messages.
-3. Copy `.env.example` to `.env` and fill in `LINE_LOGIN_CHANNEL_ID`, `LINE_LIFF_ID`, `LINE_CHANNEL_ACCESS_TOKEN`, and `LINE_CHANNEL_SECRET`. These are **server configuration values**, never paste secrets into a public frontend or commit `.env` to GitHub.
-4. Set `PUBLIC_BASE_URL=https://your-public-site.example`; register the HTTPS webhook URL `https://your-public-site.example/api/line/webhook` in LINE Developers and turn on **Use webhook**.
-5. Optional: invite your **existing OA bot** to your staff LINE group and enable group participation for the bot. Its verified webhook event will register the group ID in `line_groups`; choose the right group for notifications as the owner, or set `LINE_STAFF_GROUP_ID` privately in `.env`.
-6. A **sample bilingual Rich Menu image** is `line-richmenu-th-en.png` (2500×1686). Only if you explicitly want to change the **default Rich Menu on your existing OA**, run `node scripts/setup-richmenu.mjs` after placing your production credentials. This **modifies the existing OA's default Rich Menu** and creates no new OA. Backup the original Rich Menu first. You can instead upload the PNG and set tap areas through LINE OA Manager manually.
-
-Rich Menu buttons: Book / Shop / Appointments / Orders / Account / Contact. LIFF URLs use `https://liff.line.me/<LIFF_ID>?view=...` and the web app reads the corresponding `view` parameter.
-
-Official references: https://developers.line.biz/en/docs/messaging-api/getting-started/ and https://developers.line.biz/en/docs/liff/getting-started/
-
-## Configuration
-
-Copy `.env.example` to `.env` and adjust, especially:
-
-```dotenv
-DEMO_MODE=false
-NODE_ENV=production
-SESSION_SECRET=long-random-secret-at-least-48-characters
-STAFF_OWNER_PASSWORD=long-unique-production-password
-STAFF_RECEPTION_PASSWORD=another-unique-production-password
-STAFF_STORE_PASSWORD=third-unique-production-password
-LINE_LOGIN_CHANNEL_ID=...
-LINE_LIFF_ID=...
-LINE_CHANNEL_ACCESS_TOKEN=...
-LINE_CHANNEL_SECRET=...
-PUBLIC_BASE_URL=https://your-site.example
-TWILIO_ACCOUNT_SID=...
-TWILIO_AUTH_TOKEN=...
-TWILIO_VERIFY_SERVICE_SID=...
+```sql
+insert into public.sw_staff(auth_user_id,email,display_name,role)
+select id,email,'Suwat Clinic Owner','owner'
+from auth.users
+where email = 'YOUR-OWNER-EMAIL@example.com'
+on conflict (auth_user_id) do nothing;
 ```
 
-- With real Twilio Verify credentials configured, a customer can verify a Thai mobile number via SMS OTP. In **live mode**, phone verification is required before booking or ordering.
-- LINE Messaging API pushes Flex Messages to the customer and selected staff group. Staff group messages contain **reference, date, time, and status only**, not symptoms, phone numbers, addresses, or clinical notes. Actual delivery requires a valid token and that the recipient is eligible to receive messages. A basic retry outbox is included but is **not a substitute for durable background workers** in production.
-- Order creation reserves inventory with FEFO (earliest-expiring lot first). **Payment is not processed by this MVP**. Orders stay in `awaiting_payment`; the owner can mark payment manually verified after checking external payment evidence. There is no automatic payment gateway or carrier API yet.
-- Role separation: owner, reception, store. Server verifies sessions; staff API never exposes symptoms via the overview listing. Clinical notes should only be available to authorized medical roles in a future medical-record subsystem.
+4. เข้าสู่หน้า `/staff` ของเว็บไซต์ โดยใช้อีเมลและรหัสผ่านที่สร้างใน Supabase Auth (ไม่ได้ใช้ `owner/demo1234` แบบ MVP เก่าอีกแล้ว)
+5. พนักงานเพิ่มภายหลังได้ด้วยการสร้าง Auth User และเพิ่มแถวใน `sw_staff` โดยเปลี่ยน role เป็น `reception` หรือ `store`
 
-## Important production deployment limits
+> Owner ควรเปิด MFA สำหรับบัญชี Supabase Dashboard และไม่ใช้รหัสผ่านเดียวกับบัญชีอื่น
 
-This version deliberately uses **SQLite on a local or persistent server**, not Supabase, so you can inspect and run it immediately without credentials. A **Supabase PostgreSQL schema blueprint** is provided in `sql/supabase-schema.sql`; it is **NOT connected to the current Node server**, and copying its SQL alone does not migrate data or deploy the app. You need an implementation of the Postgres adapter, atomic booking/checkout RPCs, migration and backup plan before public production on Supabase.
+## C. ตั้งค่า Vercel
 
-**Do not deploy this SQLite server as-is to Vercel serverless:** the local filesystem is not a persistent database there. For internal evaluation use a local computer. For production use a persistent, backed-up Node server with HTTPS and security review, or complete the Supabase migration. Add periodic notification workers, rate-limits on shared storage, uptime monitoring, audit retention, privacy notices, PDPA compliance, emergency/out-of-hours guidance, staff onboarding, SMS and payment-provider agreements, product registration checks, and LINE messaging quota monitoring before use with real patients.
+1. ไปที่ https://vercel.com/new แล้ว **Import** Repository `suwat-clinic`
+2. **Framework Preset: Other** (ไม่ใช่ Next.js; เวอร์ชันนี้ใช้ Static HTML + Vercel Functions)
+3. **Root Directory:** โฟลเดอร์รากที่มี `package.json`/`vercel.json`
+4. **Output Directory:** `public` (ไฟล์ `vercel.json` ตั้งค่าให้แล้ว)
+5. เข้า **Project → Settings → Environment Variables** เพิ่มค่าต่อไปนี้:
 
-No customer/patient data should be entered into demo mode. Product images, prices, expiry dates, and descriptions are **fictional samples**, not authorized product listings or medical claims.
+| Name | ใส่ค่าอย่างไร |
+|---|---|
+| `SUPABASE_URL` | `https://onoivcfoaradmefcdwls.supabase.co` |
+| `SUPABASE_PUBLISHABLE_KEY` | Publishable Key ของโปรเจกต์ Supabase |
+| `SUPABASE_SECRET_KEY` | **Secret Key ตัวใหม่หลัง Rotate** (เก็บแบบ Secret) |
+| `PUBLIC_BASE_URL` | `https://โดเมนโปรเจกต์.vercel.app` |
+| `CRON_SECRET` | สุ่มข้อความยาวอย่างน้อย 32 ตัวอักษรสำหรับงานส่ง LINE ซ้ำ |
+| `LINE_LOGIN_CHANNEL_ID` | Channel ID จาก LINE Login ของ OA เดิม |
+| `LINE_LIFF_ID` | LIFF ID |
+| `LINE_CHANNEL_ACCESS_TOKEN` | Token ของ Messaging API Channel ของ OA เดิม |
+| `LINE_CHANNEL_SECRET` | Channel Secret จาก Messaging API |
+| `LINE_STAFF_GROUP_ID` | ไม่ต้องใส่ก่อนก็ได้ เลือกกลุ่มในแดชบอร์ดภายหลัง |
+| `TWILIO_ACCOUNT_SID` | สำหรับเปิดใช้งาน SMS OTP จริง |
+| `TWILIO_AUTH_TOKEN` | สำหรับ SMS OTP (Secret) |
+| `TWILIO_VERIFY_SERVICE_SID` | Twilio Verify Service ID |
 
-## Tests
+6. กด **Deploy** หรือ **Redeploy** หากเคย Deploy ไปแล้ว
+7. เปิดเว็บ `https://โดเมนโปรเจกต์.vercel.app/api/health` หากเชื่อมต่อ Supabase และรัน SQL สำเร็จ จะได้ `{"ok":true,"database":"supabase",...}`
+8. เปิดหน้า `/staff` แล้ว Login ด้วยอีเมล Owner ที่สร้างในขั้น B
+
+**คำเตือน:** Secret Key เดิมที่เคยส่งในแชตถือว่าเปิดเผยแล้ว ให้ยกเลิกและสร้างคีย์ใหม่ที่ Supabase → Settings → API Keys ก่อน Deploy และอย่าแปะคีย์ใหม่ลงใน GitHub หรือแชต
+
+## D. เชื่อม LINE OA เดิม (ไม่ต้องสร้าง OA ใหม่)
+
+1. เปิด https://manager.line.biz/ เลือก OA ที่คลินิกใช้อยู่ → Settings → Messaging API
+2. ใช้ **Messaging API Channel เดิม** และตรวจสิทธิ์ Provider ก่อนเปลี่ยนค่าใด ๆ
+3. ใน https://developers.line.biz/console/ สร้าง **LINE Login Channel ภายใต้ Provider เดียวกัน**
+4. สร้าง LIFF App ภายใต้ LINE Login Channel โดยใช้ Endpoint URL `https://โดเมนโปรเจกต์.vercel.app/`
+5. คัดลอก LINE Login Channel ID และ LIFF ID มาใส่ใน Vercel Environment Variables
+6. ตั้ง LINE Messaging API Webhook URL เป็น `https://โดเมนโปรเจกต์.vercel.app/api/line/webhook`, กด Verify และเปิด Use webhook
+7. หาก OA เดิมใช้งาน Webhook กับระบบแชตอื่นอยู่ **อย่าเปลี่ยนทันที** เพราะระบบเดิมอาจหยุดทำงาน; ต้องออกแบบรวม webhook หรือปรึกษาผู้ดูแลระบบเดิม
+8. เปิด Allow bot to join group chats, เชิญ OA เข้ากลุ่มพนักงาน จากนั้นส่งข้อความหนึ่งข้อความในกลุ่มเพื่อให้ระบบตรวจพบ Group ID
+9. Login Owner → `/staff` → Settings → LINE Group เพื่อเลือกกลุ่มแจ้งเตือน
+10. ตั้ง Rich Menu เดิมให้เปิด `https://liff.line.me/LIFF_ID?view=booking` สำหรับจองคิว และ `?view=shop` สำหรับร้านค้า
+
+## E. SMS OTP — ต้องมีเพื่อจองคิว/สั่งซื้อจริง
+
+- เวอร์ชัน v2 **ไม่ให้ใช้เบอร์โทรที่ยังไม่ผ่านการยืนยันในการจองคิวหรือสั่งซื้อ**
+- ตั้งค่าบริการ Twilio Verify และ Environment Variables 3 ตัว ตามตารางด้านบน
+- ลูกค้าเข้าสู่ระบบผ่าน LINE และเข้า **บัญชีของฉัน → ยืนยันเบอร์โทร** ก่อนจองคิว
+- หากยังไม่ได้ตั้ง Twilio หน้าเว็บ/ร้านค้าดูได้ แต่การยืนยันเบอร์และการจองจริงจะไม่ผ่าน นี่เป็นข้อจำกัดที่ตั้งใจไว้เพื่อป้องกันการแอบอ้างตัวตน
+
+## F. การขายสินค้า
+
+- Owner ไป `/staff` → Inventory → เพิ่มผลิตภัณฑ์ แล้วเพิ่มล็อต, วันหมดอายุ และจำนวน
+- คำสั่งซื้อจะสำรองสินค้าในฐานข้อมูลทันที (FEFO) และตั้งสถานะ `awaiting_payment`
+- Owner ต้องตรวจสอบยอดเงิน **จริงด้วยตนเอง** ก่อนกด `Verify payment`
+- พนักงาน Store เปลี่ยนเป็น Packing → Shipped → Delivered; ถ้า Shipped ต้องกรอกบริษัทขนส่งและเลขพัสดุ
+- ระบบเตรียมข้อความ LINE แจ้งลูกค้าเมื่อคำสั่งซื้อ/สถานะอัปเดต
+- **ยังไม่มีระบบรับเงิน QR/Payment Gateway อัตโนมัติ** (ต่อยอดภายหลังได้)
+
+## G. ข้อควรทดสอบก่อนเปิดใช้งานจริง
+
+- Login LINE, เชื่อมบัญชีเดิม และ OTP SMS จริง
+- 2 คนจองคิวสุดท้ายพร้อมกัน ต้องยืนยันได้เพียง 1 คน
+- หลายคนซื้อสินค้าล็อตสุดท้ายพร้อมกัน ต้องไม่ตัดสต็อกติดลบ
+- ลูกค้าเห็นข้อมูลเฉพาะของตน ส่วนพนักงานเห็นเฉพาะข้อมูลตามสิทธิ์
+- LINE Flex Message ถึงลูกค้าและกลุ่ม LINE พนักงาน โดย **ไม่ส่งอาการผู้ป่วยในกลุ่ม**
+- Cron Notification Retry ทำงาน (ต้องมี `CRON_SECRET`; Cron ทุก 5 นาทีเหมาะกับ Vercel Pro)
+- ตรวจ PDPA, การจัดเก็บข้อมูลสุขภาพ, ความยินยอม, retention, การสำรองข้อมูล, นโยบายคืนสินค้า, และข้อกฎหมายร้านขายผลิตภัณฑ์เสริมอาหาร
+
+## H. รันทดสอบบนเครื่อง
+
+1. ติดตั้ง Node.js 22+
+2. คัดลอก `.env.example` เป็น `.env` แล้วใส่ค่าเชื่อมต่อจริงเฉพาะในไฟล์ `.env` (อย่านำไฟล์นี้ขึ้น GitHub)
+3. เปิด Terminal ในโฟลเดอร์ แล้วรัน:
 
 ```bash
 npm test
+npm run dev
 ```
 
-Tests validate login sessions, availability limits, idempotency, cancellation, stock reservation, payment gate, shipping status, role checks, and protection from exposure of symptoms in staff listings.
+เปิด http://localhost:3000 ระบบจะใช้ Supabase จริงตามค่า `.env` — **ไม่มี Demo Account** และ **ไม่มี SQLite**
+
+## โครงสร้างไฟล์
+
+```text
+suwat-clinic-supabase/
+├─ public/                    # หน้าเว็บลูกค้าและพนักงาน ไทย/อังกฤษ
+│  ├─ index.html
+│  ├─ app.js
+│  ├─ styles.css
+│  └─ assets/
+├─ api/
+│  ├─ index.mjs              # API สำหรับสมาชิก, จองคิว, ร้านค้า, พนักงาน
+│  ├─ webhook.mjs            # LINE webhook verify HMAC
+│  └─ cron.mjs               # Notification delivery retry
+├─ lib/remote.mjs            # Supabase REST adapter + session + LINE Flex
+├─ sql/01_setup.sql          # Run ใน Supabase SQL Editor
+├─ scripts/setup-richmenu.mjs
+├─ tests/basic.test.mjs
+├─ vercel.json               # Vercel routing + cron
+├─ package.json
+├─ .env.example              # Template เท่านั้น ไม่มี Secret จริง
+└─ README.md
+```
+
+### หมายเหตุด้านเทคนิค
+
+- ตัวเวอร์ชันนี้ใช้ Vercel **Functions + Static HTML** โดยไม่ต้องติดตั้ง Next.js เพิ่ม
+- ภายใน Database ใช้ตาราง `sw_*` ใหม่ ไม่แก้/ลบ `sc_*` ที่เคยสร้างจาก MVP
+- PostgreSQL RPC `sw_book` ใช้ Lock ป้องกันจองคิวเกิน; `sw_checkout` ใช้ Lock และ Transaction สำหรับ FEFO stock
+- Supabase Secret Key ใช้ฝั่ง API เท่านั้น, ฝั่ง Browser ไม่เรียกฐานข้อมูลโดยตรง
+- Staff Login ตรวจสอบรหัสผ่านด้วย **Supabase Auth** และอนุญาตเฉพาะรายชื่อใน `sw_staff`
+- ระบบแจ้ง LINE ใช้ Queue ใน `sw_notifications` และ Vercel Cron เพื่อ Retry
+- ยังไม่ได้ทำ penetration test, production load test, หรือทดสอบเชื่อม Supabase/LINE จริงในบัญชีผู้ใช้
