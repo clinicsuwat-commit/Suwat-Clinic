@@ -1,6 +1,6 @@
 {
   "name": "suwat-clinic-supabase",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "private": true,
   "type": "module",
   "description": "Suwat Clinic TH/EN web application, LINE OA and Supabase backend, Vercel-ready",

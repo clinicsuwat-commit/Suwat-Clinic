@@ -41,3 +41,25 @@ test('repository ships no SQLite or local secrets',()=>{
  assert.equal(files.includes('data'),false);
  assert.equal(files.includes('vercel.json'),true);
 });
+
+test('v2.2 no-SMS phone entry requires LINE-authenticated session',async()=>{
+ const p=await invoke(handler,'POST','/api/me/phone',JSON.stringify({phone:'0812345678'}),{'Content-Type':'application/json'});
+ assert.equal(p.status,401);
+ const otp=await invoke(handler,'POST','/api/otp/start',JSON.stringify({phone:'0812345678'}),{'Content-Type':'application/json'});
+ assert.equal(otp.status,410);
+ const code=fs.readFileSync(path.resolve('api/index.mjs'),'utf8');
+ assert.match(code,/phone_verified:verified/);
+ assert.match(code,/Add your phone number in My Account/);
+ assert.doesNotMatch(code,/verify\.twilio\.com/);
+});
+test('v2.2 keeps staff approval and no-OTP account UI',()=>{
+ const app=fs.readFileSync(path.resolve('public/app.js'),'utf8');
+ const setup=fs.readFileSync(path.resolve('sql/01_setup.sql'),'utf8');
+ const migration=fs.readFileSync(path.resolve('sql/02_line_phone_no_otp.sql'),'utf8');
+ assert.match(app,/data-form="phone-save"/);
+ assert.doesNotMatch(app,/data-form="otp-start"/);
+ assert.match(setup,/case when m='manual' or not c\.phone_verified then 'pending'/);
+ assert.match(migration,/case when m='manual' or not c\.phone_verified then 'pending'/);
+ assert.match(migration,/on conflict\(key\) do update set value=excluded\.value/);
+ assert.doesNotMatch(migration,/drop table/i);
+});

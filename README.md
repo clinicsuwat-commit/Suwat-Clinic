@@ -1,10 +1,36 @@
+# Suwat Clinic v2.2 — LINE Login + กรอกเบอร์โทร (ไม่มี SMS OTP)
+
+**เวอร์ชันนี้เปลี่ยนจากการบังคับ SMS OTP เป็น LINE Login + ให้ลูกค้ากรอกเบอร์โทรเอง** โดยข้อมูลเบอร์โทรเป็น self-reported (ยังไม่ยืนยันความเป็นเจ้าของเบอร์) และ **คำขอจองใหม่ทั้งหมดถูกพักเป็น pending เพื่อพนักงานตรวจสอบ** ไม่มีการส่ง OTP หรือค่า SMS สำหรับฟีเจอร์นี้
+
+## อัปเดตจาก v2.1 ที่ Deploy และเชื่อม Supabase อยู่แล้ว (ทำตามลำดับ)
+
+1. ไปที่ **Supabase → SQL Editor → New Query** แล้ววางเนื้อหาจาก `sql/02_line_phone_no_otp.sql` และกด **Run** (ไม่ต้องรัน `01_setup.sql` ซ้ำ และไม่ต้องลบตารางเดิม)
+2. ดาวน์โหลด ZIP v2.2 และแตกไฟล์ แล้วนำ **ไฟล์ภายใน** โฟลเดอร์ `Suwat_Clinic_v2_2_LINE_Phone_No_OTP` ไปทับไฟล์เดิมใน GitHub Repository (ให้ `package.json`, `vercel.json`, `api`, `lib`, `public`, `sql` อยู่ระดับเดียวกัน)
+3. กด **Commit changes** ไปที่ Production branch ที่เชื่อมกับ Vercel แล้วรอ Vercel Deployment ใหม่ขึ้น Ready
+4. Vercel Environment Variables เดิม (`SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `LINE_LOGIN_CHANNEL_ID`, `LINE_LIFF_ID`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET` ฯลฯ) **ใช้ต่อได้** ไม่ต้องกรอกใหม่และไม่ต้องส่งคีย์ในแชต; ค่า Twilio ไม่จำเป็นแล้ว (ลบทิ้งได้หลังยืนยัน Deploy สำเร็จ)
+5. เปิด LIFF ผ่าน LINE บนมือถือ → **บัญชีของฉัน → กรอกเบอร์โทร → บันทึก** → จองคิว/สั่งสินค้า
+6. ตรวจรายการจองใน **Staff Dashboard** ว่าสถานะเป็น `pending` แล้วให้พนักงานกด **Confirm** ก่อนถือว่าเป็นคิวยืนยัน
+
+### การตรวจสอบ SQL หลัง migration
+
+```sql
+SELECT key, value FROM public.sw_settings WHERE key = 'booking_mode';
+-- ต้องได้ 'manual'
+```
+
+**สำคัญ:** LINE Login พิสูจน์บัญชี LINE ไม่ใช่เจ้าของหมายเลขโทรศัพท์ จึงไม่มีการแสดงว่าเบอร์โทร verified เมื่อกรอกเอง ระวังการกรอกผิด/แอบอ้าง และให้เจ้าหน้าที่ตรวจสอบเมื่อเหมาะสม ไม่เปิดเผยอาการผู้ป่วยในกลุ่ม LINE และตรวจสิทธิ์/PDPA ก่อนใช้กับข้อมูลจริง
+
+**การเปิดให้บริการเชิงพาณิชย์:** ตรวจแพ็กเกจ Vercel ที่รองรับธุรกิจ (Hobby ไม่ใช่แพ็กเกจสำหรับการใช้งานเชิงพาณิชย์), ระบบสำรองข้อมูล, LINE OA messaging quota และทดสอบครบก่อนเปิดให้ลูกค้าจริง
+
+---
+
 # Suwat Clinic v2 — Supabase + Vercel + LINE OA เดิม
 
 **เวอร์ชัน:** v2.1 (No scheduled Cron for Hobby testing) — Source code สำหรับ GitHub/Vercel
 
 โปรเจกต์นี้ย้ายออกจาก SQLite แล้ว โดยใช้ Supabase PostgreSQL ผ่าน Server-side API (Vercel Functions) พร้อม SQL สำหรับจองคิวแบบ Transaction, จองสต็อกแบบ FEFO, ระบบพนักงานรับทราบงาน, ร้านค้าและระบบแจ้งเตือน LINE OA เดิม ทั้ง UI ไทย/อังกฤษยังเหมือนเดิม
 
-> ⚠️ **ข้อจำกัดที่ต้องรู้**: โค้ดผ่าน Automated Tests แต่ยังไม่ได้ Deploy หรือเชื่อมต่อกับฐานข้อมูล Supabase จริงของคุณจากสภาพแวดล้อมนี้ ต้องรัน SQL และตั้งค่า Environment Variables จึงทำงานได้ การจอง/สั่งซื้อต้องมี LINE Login และ SMS OTP จริง; การชำระเงินยังใช้ **ตรวจสอบด้วยพนักงาน** ไม่ใช่ Payment Gateway และยังไม่ควรใช้ข้อมูลผู้ป่วยจริงจนกว่าจะผ่านการตรวจสอบความปลอดภัย/PDPA และทดสอบใช้งานจริง
+> ⚠️ **ข้อจำกัดที่ต้องรู้**: โค้ดผ่าน Automated Tests แต่ยังไม่ได้ Deploy หรือเชื่อมต่อกับฐานข้อมูล Supabase จริงของคุณจากสภาพแวดล้อมนี้ ต้องรัน SQL และตั้งค่า Environment Variables จึงทำงานได้ การจอง/สั่งซื้อต้องมี LINE Login และเบอร์โทรที่ลูกค้ากรอกเอง; การชำระเงินยังใช้ **ตรวจสอบด้วยพนักงาน** ไม่ใช่ Payment Gateway และยังไม่ควรใช้ข้อมูลผู้ป่วยจริงจนกว่าจะผ่านการตรวจสอบความปลอดภัย/PDPA และทดสอบใช้งานจริง
 
 ## A. อัปโหลดไฟล์ขึ้น GitHub (ทำทีละขั้น)
 
@@ -65,9 +91,6 @@ on conflict (auth_user_id) do nothing;
 | `LINE_CHANNEL_ACCESS_TOKEN` | Token ของ Messaging API Channel ของ OA เดิม |
 | `LINE_CHANNEL_SECRET` | Channel Secret จาก Messaging API |
 | `LINE_STAFF_GROUP_ID` | ไม่ต้องใส่ก่อนก็ได้ เลือกกลุ่มในแดชบอร์ดภายหลัง |
-| `TWILIO_ACCOUNT_SID` | สำหรับเปิดใช้งาน SMS OTP จริง |
-| `TWILIO_AUTH_TOKEN` | สำหรับ SMS OTP (Secret) |
-| `TWILIO_VERIFY_SERVICE_SID` | Twilio Verify Service ID |
 
 6. กด **Deploy** หรือ **Redeploy** หากเคย Deploy ไปแล้ว
 7. เปิดเว็บ `https://โดเมนโปรเจกต์.vercel.app/api/health` หากเชื่อมต่อ Supabase และรัน SQL สำเร็จ จะได้ `{"ok":true,"database":"supabase",...}`
@@ -90,12 +113,13 @@ on conflict (auth_user_id) do nothing;
 9. Login Owner → `/staff` → Settings → LINE Group เพื่อเลือกกลุ่มแจ้งเตือน
 10. ตั้ง Rich Menu เดิมให้เปิด `https://liff.line.me/LIFF_ID?view=booking` สำหรับจองคิว และ `?view=shop` สำหรับร้านค้า
 
-## E. SMS OTP — ต้องมีเพื่อจองคิว/สั่งซื้อจริง
+## E. LINE Login + กรอกเบอร์โทร (ไม่มี SMS OTP)
 
-- เวอร์ชัน v2 **ไม่ให้ใช้เบอร์โทรที่ยังไม่ผ่านการยืนยันในการจองคิวหรือสั่งซื้อ**
-- ตั้งค่าบริการ Twilio Verify และ Environment Variables 3 ตัว ตามตารางด้านบน
-- ลูกค้าเข้าสู่ระบบผ่าน LINE และเข้า **บัญชีของฉัน → ยืนยันเบอร์โทร** ก่อนจองคิว
-- หากยังไม่ได้ตั้ง Twilio หน้าเว็บ/ร้านค้าดูได้ แต่การยืนยันเบอร์และการจองจริงจะไม่ผ่าน นี่เป็นข้อจำกัดที่ตั้งใจไว้เพื่อป้องกันการแอบอ้างตัวตน
+- ลูกค้าล็อกอินด้วย LINE ก่อน แล้วไปหน้า **บัญชีของฉัน → หมายเลขโทรศัพท์สำหรับการติดต่อ** เพื่อบันทึกเบอร์ 10 หลัก
+- ไม่ต้องตั้งค่า Twilio หรือส่ง OTP ใด ๆ; เบอร์ที่ลูกค้ากรอกถือเป็น **self-reported ไม่ใช่ phone verified**
+- ระบบจะยอมให้ส่งคำขอจองได้หลังมีเบอร์โทร และตั้งคิวเป็น `pending` เพื่อให้พนักงานยืนยัน (แม้เคยตั้ง booking mode เป็น auto)
+- คำสั่งซื้อยังต้องตรวจสอบการชำระเงินแบบ manual review และข้อมูลติดต่ออาจต้องให้พนักงานตรวจสอบ
+- สำหรับระบบที่ติดตั้ง v2.1 แล้ว: **ต้องรัน `sql/02_line_phone_no_otp.sql` ก่อน Deploy v2.2** ไม่งั้น SQL Function เดิมจะยังบังคับ OTP
 
 ## F. การขายสินค้า
 
@@ -108,7 +132,7 @@ on conflict (auth_user_id) do nothing;
 
 ## G. ข้อควรทดสอบก่อนเปิดใช้งานจริง
 
-- Login LINE, เชื่อมบัญชีเดิม และ OTP SMS จริง
+- Login LINE, บันทึกเบอร์โทรโดยไม่ใช้ OTP, ตรวจให้คิวใหม่เป็น pending
 - 2 คนจองคิวสุดท้ายพร้อมกัน ต้องยืนยันได้เพียง 1 คน
 - หลายคนซื้อสินค้าล็อตสุดท้ายพร้อมกัน ต้องไม่ตัดสต็อกติดลบ
 - ลูกค้าเห็นข้อมูลเฉพาะของตน ส่วนพนักงานเห็นเฉพาะข้อมูลตามสิทธิ์
@@ -161,4 +185,3 @@ suwat-clinic-supabase/
 - Staff Login ตรวจสอบรหัสผ่านด้วย **Supabase Auth** และอนุญาตเฉพาะรายชื่อใน `sw_staff`
 - ระบบแจ้ง LINE ใช้ Queue ใน `sw_notifications` และพยายามส่งทันทีเมื่อเกิดรายการ; **v2.1 ปิด schedule ของ Cron** เพื่อผ่านการ Deploy บน Hobby แบบทดสอบเท่านั้น หากส่งล้มเหลวจะค้างใน Queue จนกว่าจะกำหนด Scheduler ที่รองรับ
 - ยังไม่ได้ทำ penetration test, production load test, หรือทดสอบเชื่อม Supabase/LINE จริงในบัญชีผู้ใช้
-- Update LINE webhook configuration

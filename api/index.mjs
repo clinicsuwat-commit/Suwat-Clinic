@@ -1,7 +1,7 @@
 // Suwat Clinic API v2. Runs in a Vercel Node.js Function and in dev.mjs.
 // All database operations happen on the server; no privileged key reaches the browser.
 import {
- cfg,smsReady,fail,clean,validPhone,iso,today,isDate,safeDate,reply,errorReply,requestOrigin,getBody,
+ cfg,fail,clean,validPhone,iso,today,isDate,safeDate,reply,errorReply,requestOrigin,getBody,
  rows,first,insert,patch,del,upsert,rpc,getSession,requireUser,newSession,logout,sessionCookie,clearCookie,
  lineVerify,staffAuth,audit,notifyBooking,notifyOrder,flush,staffGroup
 } from '../lib/remote.mjs';
@@ -18,7 +18,6 @@ async function staff(req){return getSession(req,'staff');}
 async function ownBooking(c,id){const b=await first('sw_bookings',{select:'*',id:eq(id),customer_id:eq(c.id)});if(!b)throw fail(404,'Booking not found');return b;}
 async function orderWithItems(o){const items=await rows('sw_order_items',{select:'title_th,title_en,qty,unit_price',order_id:eq(o.id)});return {...o,items};}
 async function deliver(){try{await flush(5);}catch(e){console.error('Notification retry later:',e.message);}}
-async function sms(action,to,code){const form=new URLSearchParams({To:'+66'+to.slice(1),...(action==='start'?{Channel:'sms'}:{Code:code})});const endpoint=action==='start'?'Verifications':'VerificationCheck';const r=await fetch(`https://verify.twilio.com/v2/Services/${cfg.twilioService}/${endpoint}`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded',Authorization:'Basic '+Buffer.from(cfg.twilioSid+':'+cfg.twilioToken).toString('base64')},body:form,signal:AbortSignal.timeout(10000)});const data=await r.json().catch(()=>({}));if(!r.ok)throw fail(action==='start'?502:400,'SMS verification failed');return data;}
 async function allTasks(staffRow){const tasks=await rows('sw_tasks',{select:'id,kind,title,status,created_at',order:'id.desc',limit:80});const mine=staffRow.role==='owner'?tasks:tasks.filter(t=>t.kind===(staffRow.role==='reception'?'booking':'order'));
  const ids=mine.map(x=>x.id);if(!ids.length)return [];
  const acks=await rows('sw_task_acks',{select:'task_id,staff_id,acknowledged_at',task_id:`in.(${ids.join(',')})`});
@@ -58,27 +57,23 @@ export async function route(req,res){
   const c=requireUser(await customer(req)),data=await getBody(req);if(!['th','en'].includes(data.lang))throw fail(400,'Invalid language');
   await patch('sw_customers',{id:eq(c.id)},{preferred_lang:data.lang});return reply(res,200,{ok:true});
  }
- if(method==='POST'&&path==='/api/otp/start'){
+ // SMS OTP removed in v2.2. Keep explicit responses for older clients; no SMS is sent.
+ if(method==='POST'&&(path==='/api/otp/start'||path==='/api/otp/check'))throw fail(410,'SMS OTP is no longer used. Save your phone number in My Account.');
+ if(method==='POST'&&path==='/api/me/phone'){
   const c=requireUser(await customer(req)),data=await getBody(req),phone=clean(data.phone,15);
-  if(!smsReady)throw fail(503,'SMS OTP provider not yet configured');if(!validPhone(phone))throw fail(400,'Use a valid Thai phone number');
-  // One active OTP destination per account; Twilio enforces service-side rate limits.
-  await sms('start',phone);await upsert('sw_phone_verifications',{customer_id:c.id,phone,expires_at:new Date(Date.now()+10*60*1000).toISOString()},'customer_id');
-  return reply(res,200,{sent:true});
- }
- if(method==='POST'&&path==='/api/otp/check'){
-  const c=requireUser(await customer(req)),data=await getBody(req),code=clean(data.code,8);
-  if(!smsReady)throw fail(503,'SMS OTP provider not yet configured');
-  const pending=await first('sw_phone_verifications',{select:'phone',customer_id:eq(c.id),expires_at:'gt.'+iso()});
-  if(!pending||!/^\d{4,8}$/.test(code))throw fail(400,'OTP expired or invalid');
-  const result=await sms('check',pending.phone,code);if(result.status!=='approved')throw fail(400,'Invalid OTP');
-  const out=await patch('sw_customers',{id:eq(c.id)},{phone:pending.phone,phone_verified:true});await del('sw_phone_verifications',{customer_id:eq(c.id)});
-  return reply(res,200,{customer:publicCustomer(out[0])});
+  if(!validPhone(phone))throw fail(400,'Please enter a valid 10-digit Thai phone number');
+  // A phone number provided without OTP is self-declared, not ownership-verified.
+  // Preserve verified status only when the number did not change.
+  const verified=c.phone===phone&&c.phone_verified===true;
+  const out=await patch('sw_customers',{id:eq(c.id)},{phone,phone_verified:verified});
+  await audit('customer:'+c.id,'profile.phone_updated',String(c.id),{verified});
+  return reply(res,200,{customer:publicCustomer(out[0]),verification:'self_reported'});
  }
  if(method==='GET'&&path==='/api/bookings'){
   const c=requireUser(await customer(req));return reply(res,200,{bookings:await rows('sw_bookings',{select:'id,booking_ref,patient_name,date,slot_key,status,created_at',customer_id:eq(c.id),order:'date.desc,id.desc',limit:100})});
  }
  if(method==='POST'&&path==='/api/bookings'){
-  const c=requireUser(await customer(req)),data=await getBody(req);safeDate(data.date);if(!c.phone_verified)throw fail(403,'Verify your phone before booking');
+  const c=requireUser(await customer(req)),data=await getBody(req);safeDate(data.date);if(!validPhone(c.phone))throw fail(403,'Add your phone number in My Account before booking');
   const name=clean(data.patient_name||c.display_name,100),slot=clean(data.slot_key,50),symptoms=clean(data.symptoms,500),request=clean(data.request_id,100);
   if(name.length<2||!slot)throw fail(400,'Please enter a name and slot');
   const b=unrow(await rpc('sw_book',{p_customer:c.id,p_date:data.date,p_slot:slot,p_patient:name,p_symptoms:symptoms,p_request:request}));
@@ -96,7 +91,7 @@ export async function route(req,res){
   return reply(res,200,{orders:await Promise.all(orders.map(orderWithItems))});
  }
  if(method==='POST'&&path==='/api/orders'){
-  const c=requireUser(await customer(req)),data=await getBody(req);if(!c.phone_verified)throw fail(403,'Verify your phone before ordering');
+  const c=requireUser(await customer(req)),data=await getBody(req);if(!validPhone(c.phone))throw fail(403,'Add your phone number in My Account before ordering');
   if(!Array.isArray(data.items)||!data.items.length||data.items.length>30)throw fail(400,'Invalid cart');
   const counts=new Map();for(const v of data.items){const id=asInt(v.id),qty=asInt(v.qty);if(qty>30)throw fail(400,'Quantity too large');counts.set(id,(counts.get(id)||0)+qty);}
   if([...counts.values()].some(x=>x>50))throw fail(400,'Quantity too large');

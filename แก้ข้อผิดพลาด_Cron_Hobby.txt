@@ -1,0 +1,19 @@
+Suwat Clinic v2.1 — Fix Vercel Hobby Cron Deployment
+
+ปัญหา:
+Hobby accounts are limited to daily cron jobs. This cron expression (*/5 * * * *) would run more than once per day.
+
+วิธีแก้:
+- นำ crons ออกจาก vercel.json เพื่อให้ Deploy ได้บน Hobby ในระหว่างทดสอบ
+- API /api/cron/notifications ยังอยู่ แต่จะไม่ถูกเรียกอัตโนมัติ
+- ระบบพยายามส่ง LINE ทันทีหลังจองคิว/ทำคำสั่งซื้อ หากส่งไม่สำเร็จจะไม่มีการลองส่งซ้ำตามเวลา
+- การใช้งานคลินิกจริงเป็นเชิงพาณิชย์ ต้องใช้ Vercel Pro หรือแพ็กเกจที่อนุญาตการใช้งานเชิงพาณิชย์
+
+วิธีอัปเดต Github:
+1. แตก ZIP แล้วเปิดโฟลเดอร์ suwat-clinic-supabase
+2. นำไฟล์ภายในทั้งหมดไปแทนโค้ดเดิมใน GitHub (อย่าลงทั้ง ZIP)
+3. โดยเฉพาะไฟล์ vercel.json ต้องอยู่ที่รากเดียวกับ package.json
+4. Commit/Push แล้ว Vercel จะเริ่ม Deploy ใหม่ (หรือ Redeploy ใน Dashboard)
+5. ตรวจสอบ Vercel -> Deployments และ /api/health
+
+หมายเหตุ: ไม่จำเป็นต้องรัน sql/01_setup.sql ใหม่เพียงเพราะแพตช์ Cron นี้

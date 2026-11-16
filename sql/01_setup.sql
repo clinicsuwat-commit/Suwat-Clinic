@@ -1,4 +1,4 @@
--- SUWAT CLINIC V2 / SUPABASE / 2026-11
+-- SUWAT CLINIC V2.2 / SUPABASE / 2026-11
 -- Creates NEW sw_ tables, so previous sc_ blueprint tables are not overwritten.
 -- Run once in Supabase SQL Editor. No patient data, credentials or sample supplement claims.
 create extension if not exists pgcrypto;
@@ -127,7 +127,7 @@ values ('morning','ช่วงเช้า','Morning','09:00','12:00',8),
  ('afternoon','ช่วงบ่าย','Afternoon','13:00','15:00',8),
  ('evening','ช่วงเย็น','Late afternoon','15:00','17:00',4)
 on conflict(key) do nothing;
-insert into public.sw_settings(key,value) values('booking_mode','auto'),('closed_weekdays','[0]') on conflict(key) do nothing;
+insert into public.sw_settings(key,value) values('booking_mode','manual'),('closed_weekdays','[0]') on conflict(key) do nothing;
 
 -- Real-time slot counts, no private patient data.
 create or replace function public.sw_available(p_date date)
@@ -160,7 +160,7 @@ begin
   raise exception 'Date must be within 90 days' using errcode='P0001'; end if;
  if length(trim(p_patient))<2 or length(p_patient)>100 or length(coalesce(p_symptoms,''))>500 then raise exception 'Invalid booking details' using errcode='P0001';end if;
  select * into c from public.sw_customers where id=p_customer;
- if not found or not c.phone_verified then raise exception 'Verify your phone first' using errcode='P0001';end if;
+ if not found or c.phone !~ '^0[0-9]{9}$' then raise exception 'Add a phone number in your account first' using errcode='P0001';end if;
  if nullif(p_request,'') is not null then
   select * into v from public.sw_bookings where customer_id=p_customer and request_id=p_request;
   if found then return v;end if;
@@ -173,7 +173,7 @@ begin
  select value into m from public.sw_settings where key='booking_mode';
  d:='SWC-'||to_char(now() at time zone 'Asia/Bangkok','YYMMDD')||'-'||upper(substr(replace(gen_random_uuid()::text,'-',''),1,7));
  insert into public.sw_bookings(booking_ref,customer_id,patient_name,patient_phone,date,slot_key,symptoms,status,request_id)
- values(d,p_customer,trim(p_patient),c.phone,p_date,p_slot,coalesce(p_symptoms,''),case when m='manual' then 'pending' else 'confirmed' end,nullif(p_request,'')) returning * into v;
+ values(d,p_customer,trim(p_patient),c.phone,p_date,p_slot,coalesce(p_symptoms,''),case when m='manual' or not c.phone_verified then 'pending' else 'confirmed' end,nullif(p_request,'')) returning * into v;
  insert into public.sw_tasks(kind,reference_id,title) values('booking',v.id,'New appointment '||v.booking_ref);
  return v;
 end $$;
@@ -185,7 +185,7 @@ declare c public.sw_customers%rowtype; o public.sw_orders%rowtype;
  v record; p public.sw_products%rowtype; lot record; remaining int;take_qty int; total int:=0; ref text;
 begin
  select * into c from public.sw_customers where id=p_customer;
- if not found or not c.phone_verified then raise exception 'Verify your phone first' using errcode='P0001';end if;
+ if not found or c.phone !~ '^0[0-9]{9}$' then raise exception 'Add a phone number in your account first' using errcode='P0001';end if;
  if p_delivery not in ('pickup','shipping') or (p_delivery='shipping' and length(trim(coalesce(p_address,'')))<12) then raise exception 'Invalid delivery details' using errcode='P0001'; end if;
  if jsonb_typeof(p_items)<>'array' or jsonb_array_length(p_items)<1 or jsonb_array_length(p_items)>30 then raise exception 'Invalid cart' using errcode='P0001';end if;
  if nullif(p_request,'') is not null then
