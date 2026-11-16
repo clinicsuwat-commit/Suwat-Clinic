@@ -161,3 +161,4 @@ suwat-clinic-supabase/
 - Staff Login ตรวจสอบรหัสผ่านด้วย **Supabase Auth** และอนุญาตเฉพาะรายชื่อใน `sw_staff`
 - ระบบแจ้ง LINE ใช้ Queue ใน `sw_notifications` และพยายามส่งทันทีเมื่อเกิดรายการ; **v2.1 ปิด schedule ของ Cron** เพื่อผ่านการ Deploy บน Hobby แบบทดสอบเท่านั้น หากส่งล้มเหลวจะค้างใน Queue จนกว่าจะกำหนด Scheduler ที่รองรับ
 - ยังไม่ได้ทำ penetration test, production load test, หรือทดสอบเชื่อม Supabase/LINE จริงในบัญชีผู้ใช้
+- Update LINE webhook configuration
