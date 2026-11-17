@@ -1,4 +1,10 @@
 import { createCareUI } from "./care.js";
+import {
+  authenticateLineCustomer,
+  clearExternalLineSession,
+  lineLoginPendingKey,
+  lineSignedOutKey,
+} from "./line-session.js";
 
 const $root = document.getElementById("root");
 const icons = {
@@ -513,13 +519,13 @@ const loc = (th, en) => (lang === "th" ? th : en);
 dictionary.th.medications = "ประวัติการจ่ายยา";
 dictionary.en.medications = "Medication history";
 let busy = false;
-async function sending(work) {
+async function sending(work, title = loc("กำลังบันทึก…", "Saving…")) {
   if (busy) return;
   busy = true;
   const opened = performance.now();
   if (globalThis.Swal) {
     void globalThis.Swal.fire({
-      title: loc("กำลังบันทึก…", "Saving…"),
+      title,
       text: loc("กรุณารอสักครู่", "Please wait a moment"),
       showConfirmButton: false,
       allowOutsideClick: false,
@@ -604,7 +610,10 @@ async function request(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  if (!r.ok)
+    throw Object.assign(new Error(data.error || `HTTP ${r.status}`), {
+      code: data.code,
+    });
   return data;
 }
 async function post(url, data = {}) {
@@ -909,34 +918,44 @@ async function getLiff() {
 
 async function lineLogin() {
   try {
-    const liff = await getLiff();
-    if (!liff.isLoggedIn()) {
-      liff.login({ redirectUri: location.href });
-      return;
-    }
-    const token = liff.getIDToken();
-    if (!token) throw new Error(t("notConfigured"));
-    const r = await sending(() =>
-      post("/api/auth/line", { idToken: token, lang }),
+    const customer = await sending(
+      async () =>
+        authenticateLineCustomer({
+          liff: await getLiff(),
+          storage: sessionStorage,
+          callbackUrl: location.href,
+          verify: verifyLineCustomer,
+          interactive: true,
+        }),
+      loc("กำลังเข้าสู่ระบบ LINE…", "Signing in with LINE…"),
     );
-    sessionStorage.removeItem("sc_line_signed_out");
-    me.customer = r.customer;
-    await refreshForPage();
+    if (customer) {
+      me.customer = customer;
+      await refreshForPage();
+    }
   } catch (e) {
-    care.showError(e);
+    showLineSignInError(e);
   }
+}
+
+async function verifyLineCustomer(idToken) {
+  return (await post("/api/auth/line", { idToken, lang })).customer;
+}
+
+function showLineSignInError(error) {
+  care.showError(error, loc("เข้าสู่ระบบ LINE ไม่สำเร็จ", "LINE sign-in failed"));
 }
 
 async function linkStaffLine() {
   const liff = await getLiff();
-  if (!liff.isLoggedIn()) {
+  if (!liff.isLoggedIn() && !liff.isInClient()) {
     liff.login({
       redirectUri: new URL("/staff?link_line=1", location.origin).href,
     });
     return;
   }
   const idToken = liff.getIDToken();
-  if (!idToken) throw new Error(t("notConfigured"));
+  if (!idToken) throw new Error("LINE_TOKEN_MISSING");
   if (
     !(await care.confirmAction(
       loc(
@@ -993,7 +1012,9 @@ async function handleAction(el) {
   }
   if (action === "logout") {
     await sending(() => post("/api/auth/logout"));
-    sessionStorage.setItem("sc_line_signed_out", "true");
+    sessionStorage.setItem(lineSignedOutKey, "true");
+    sessionStorage.removeItem(lineLoginPendingKey);
+    void lineReady?.then(clearExternalLineSession).catch(() => {});
     care.reset();
     me.customer = null;
     orders = [];
@@ -1354,8 +1375,11 @@ const care = createCareUI({
     adminTab = "overview";
   render();
   if (config.liffId) {
+    const returningFromLogin =
+      sessionStorage.getItem(lineLoginPendingKey) === "true";
     try {
       const liff = await getLiff();
+      if (returningFromLogin) sessionStorage.removeItem(lineLoginPendingKey);
       if (
         page === "/staff" &&
         me.staff &&
@@ -1363,20 +1387,20 @@ const care = createCareUI({
       ) {
         history.replaceState({}, "", "/staff");
         await linkStaffLine();
-      } else if (
-        page !== "/staff" &&
-        liff.isLoggedIn() &&
-        !me.customer &&
-        !sessionStorage.getItem("sc_line_signed_out")
-      ) {
-        const idToken = liff.getIDToken();
-        if (idToken)
-          me.customer = (
-            await post("/api/auth/line", { idToken, lang })
-          ).customer;
+      } else if (page !== "/staff" && !me.customer && !busy) {
+        const customer = await authenticateLineCustomer({
+          liff,
+          storage: sessionStorage,
+          verify: verifyLineCustomer,
+          returningFromLogin,
+        });
+        if (customer) me.customer = customer;
       }
-    } catch {
-      console.warn("LINE session unavailable");
+    } catch (error) {
+      if (returningFromLogin) {
+        sessionStorage.removeItem(lineLoginPendingKey);
+        showLineSignInError(error);
+      } else console.warn("LINE session unavailable");
     }
   }
   await refreshForPage();

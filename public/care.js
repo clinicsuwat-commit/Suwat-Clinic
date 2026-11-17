@@ -275,10 +275,34 @@ export function createCareUI(api) {
       "กรุณาตรวจข้อมูลที่กรอก แล้วลองใหม่",
       "Check the information and try again.",
     ],
+    LINE_LOGIN_CHANNEL_MISMATCH: [
+      "การตั้งค่า LINE Login และ LIFF ของคลินิกไม่ตรงกัน กรุณาติดต่อผู้ดูแลระบบ",
+      "The clinic's LINE Login and LIFF settings do not match. Contact the clinic administrator.",
+    ],
+    LINE_NOT_CONFIGURED: [
+      "คลินิกยังตั้งค่า LINE Login ไม่ครบ กรุณาติดต่อผู้ดูแลระบบ",
+      "LINE sign-in setup is incomplete. Contact the clinic administrator.",
+    ],
+    LINE_TOKEN_MISSING: [
+      "กรุณาเปิดเมนูคลินิกจาก LINE ใหม่ แล้วลองเข้าสู่ระบบอีกครั้ง",
+      "Reopen the clinic from its LINE menu and try signing in again.",
+    ],
+    LINE_TOKEN_INVALID: [
+      "กรุณาเปิดเมนูคลินิกจาก LINE ใหม่ แล้วลองเข้าสู่ระบบอีกครั้ง",
+      "Reopen the clinic from its LINE menu and try signing in again.",
+    ],
+    LINE_TOKEN_EXPIRED: [
+      "เซสชัน LINE หมดอายุ กรุณาเปิดคลินิกจากเมนู LINE ใหม่",
+      "Your LINE session expired. Reopen the clinic from its LINE menu.",
+    ],
+    LINE_VERIFY_UNAVAILABLE: [
+      "ขณะนี้เชื่อมต่อ LINE ไม่สำเร็จ กรุณาลองอีกครั้ง",
+      "LINE is currently unavailable. Please try again.",
+    ],
   };
 
   const errorText = (error) => {
-    const pair = errorMessages[error?.message];
+    const pair = errorMessages[error?.code || error?.message];
     return pair
       ? loc(...pair)
       : error?.message || loc("เกิดข้อผิดพลาด", "Something went wrong");
@@ -1267,7 +1291,10 @@ export function createCareUI(api) {
     return r.isConfirmed;
   }
 
-  function showError(error) {
+  function showError(
+    error,
+    title = loc("บันทึกไม่สำเร็จ", "Could not complete the request"),
+  ) {
     const text = errorText(error);
     if (!globalThis.Swal) {
       toast(text);
@@ -1275,7 +1302,7 @@ export function createCareUI(api) {
     }
     void globalThis.Swal.fire({
       icon: "error",
-      title: loc("บันทึกไม่สำเร็จ", "Could not complete the request"),
+      title,
       text,
       confirmButtonText: loc("ตกลง", "OK"),
       confirmButtonColor: "#154db8",

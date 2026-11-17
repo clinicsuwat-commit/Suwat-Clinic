@@ -206,6 +206,7 @@ export async function route(req, res) {
       database: "supabase",
       version: 3,
       release: "3.1",
+      patch: "3.1.1",
       lineConfigured: !!(cfg.lineLogin && cfg.lineToken),
     });
   }
@@ -360,7 +361,9 @@ export async function route(req, res) {
     );
     try {
       await audit("customer:" + c.id, "booking.create", b.booking_ref);
-      await notifyGroup("booking:group:new:" + b.id, "staff_booking");
+      await notifyGroup("booking:group:new:" + b.id, "staff_booking", {
+        booking_id: b.id,
+      });
       await deliver();
     } catch (e) {
       console.error("Booking notification will require retry:", e.message);

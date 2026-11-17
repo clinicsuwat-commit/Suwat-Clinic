@@ -1,4 +1,4 @@
-# Suwat Clinic v3.1
+# Suwat Clinic v3.1.1
 
 พอร์ทัลคนไข้และแดชบอร์ดสตาฟภาษาไทย–อังกฤษ โทนน้ำเงินแบบ Bento Grid ใช้ Supabase, Vercel และ LINE OA
 
@@ -8,13 +8,14 @@
 
    | โปรเจกต์เดิม | ไฟล์ที่ต้องรันตามลำดับ |
    |---|---|
+   | v3.1 | ไปที่ขั้นตอนที่ 2 เพื่ออัปเดตโค้ด |
    | v3.0 | `sql/04_branches_medication_stock.sql` |
    | v2.2 | `sql/03_clinic_v3.sql` แล้วตามด้วย `sql/04_branches_medication_stock.sql` |
    | v2.1 | `sql/02_line_phone_no_otp.sql`, `03_clinic_v3.sql`, `04_branches_medication_stock.sql` |
    | โปรเจกต์ใหม่ | `sql/01_setup.sql`, `02_line_phone_no_otp.sql`, `03_clinic_v3.sql`, `04_branches_medication_stock.sql` |
 
 2. แตก ZIP แล้วคัดลอกไฟล์ภายในไปยังรากของ GitHub Repository เดิม ให้ `api/`, `lib/`, `public/`, `sql/`, `package.json` และ `vercel.json` อยู่ระดับเดียวกัน จากนั้น Commit และ Push ไปที่ Production Branch
-3. ตรวจ Environment Variables เดิมใน Vercel โดยเฉพาะ `PUBLIC_BASE_URL` และ `CRON_SECRET` แล้วตรวจผลที่ `/api/health` ให้เห็น `"ok": true` และ `"release": "3.1"`
+3. ตรวจ Environment Variables เดิมใน Vercel โดยเฉพาะ `PUBLIC_BASE_URL` และ `CRON_SECRET` แล้วตรวจผลที่ `/api/health` ให้เห็น `"ok": true` และ `"patch": "3.1.1"`
 4. เข้าหน้า **`/manager` → สาขาและแผนที่** ด้วยบัญชี Owner แล้ววางลิงก์แชร์พิกัด Google Maps ที่ตรวจแล้วของสาขาอุบลและสาขายโสธร
 5. ในหน้า Manager ตรวจสิทธิ์บันทึกและทบทวนยาของสตาฟ แล้วให้ผู้ที่รับผิดชอบเข้าหน้า **`/staff` → สต็อกยา** เพื่อเพิ่มรายการและรับยอดตามล็อตลงสาขา
 6. ทดสอบสแกน QR บนมือถือและรับข้อความ LINE OA ด้วยบัญชีทดสอบของคลินิกก่อนใช้งานจริง
@@ -45,6 +46,10 @@ on conflict(auth_user_id) do nothing;
 | `CRON_SECRET` | สตริงสุ่มยาวสำหรับ Vercel Cron ตั้งใน Production แล้ว Redeploy |
 
 คง Webhook ของระบบนี้ที่ `https://โดเมนคลินิก/api/line/webhook` และกด **Verify** ใน LINE Developers Console ให้คนไข้และสตาฟเพิ่มเพื่อน LINE OA เพื่อรับข้อความแบบ Push สตาฟผูก LINE ส่วนตัวได้หลังเข้าสู่ระบบสตาฟแล้ว
+
+ถ้าเข้า LINE หลังออกจากระบบแล้วขึ้นแจ้งเตือน ให้ปิดหน้า LIFF และเปิดใหม่จากเมนูคลินิกใน LINE ถ้าระบบแจ้งว่าการตั้งค่าไม่ตรงกัน ให้เปิด **LINE Developers → LINE Login → Basic settings** แล้วเทียบ Channel ID กับ `LINE_LOGIN_CHANNEL_ID` ใน Vercel Production ตรวจ `LINE_LIFF_ID` และ Scope `openid` ที่แท็บ **LIFF** ของ Channel เดียวกัน ถ้าปรับค่าใน Vercel ให้ Deploy ใหม่
+
+การ์ดนัดใน LINE ส่วนตัวของคนไข้และสตาฟแสดงชื่อผู้ป่วย สาขา วัน เวลา และเลขนัด คนไข้กดเปิดแผนที่สาขาได้จากนัดที่ยังใช้งานอยู่ สตาฟที่ผูก LINE ได้รับใบยืนยันส่วนตัวเมื่อบันทึกนัดจาก QR ส่วนกลุ่มสตาฟแสดงสาขา วัน เวลา และเลขนัดพร้อมปุ่มเปิดแดชบอร์ด
 
 `vercel.json` เริ่มด้วย `0 0 * * *` เพื่อเรียกตัวเตือนหนึ่งครั้งต่อวันในช่วงเช้าไทย ตรงกับ 07:00 ICT ตามตารางเวลา รอบจะทำงานกับนัดที่ยืนยันแล้วในวันนี้และวันพรุ่งนี้ และชุดยาที่ถึงกำหนดเตือน เวลาเรียกจริงขึ้นกับแพลน Vercel หากใช้แพลนที่รองรับรอบถี่ สามารถเปลี่ยนเป็น `*/10 * * * *` เพื่อให้ระบบเดินคิวสำรองและส่งซ้ำเมื่อเกิดปัญหาได้ถี่ขึ้น ตัวเตือนเช้าจะเริ่มส่งตั้งแต่ 07:00 ตามเวลาไทย และส่งวันละหนึ่งข้อความต่อการเตือนแต่ละแบบ ดูผลที่ **Vercel → Cron Jobs** และในการ์ดแดชบอร์ดสตาฟ [Vercel Cron Jobs](https://vercel.com/docs/schedules/cron-jobs/usage-and-pricing)
 
