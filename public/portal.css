@@ -1,0 +1,448 @@
+:root {
+  --portal-ink: #12294b;
+  --portal-focus: #1264c6;
+  --portal-blue: #124da7;
+}
+
+html.large-text {
+  font-size: 125%;
+}
+
+[hidden] {
+  display: none !important;
+}
+:where(a, button, input, select, textarea, summary):focus-visible {
+  outline: 3px solid var(--portal-focus);
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 100;
+  inset: 0.5rem auto auto 0.5rem;
+  padding: 0.65rem 1rem;
+  color: #fff;
+  background: #103c81;
+  border-radius: 0.5rem;
+  transform: translateY(-160%);
+}
+.skip-link:focus {
+  transform: none;
+}
+
+.patient-shell,
+.work-shell,
+.care-dialog {
+  font-size: 1.125rem;
+  line-height: 1.55;
+}
+.patient-shell .section-header :is(h2, p),
+.patient-shell .care-heading :is(h3, p),
+.patient-shell .card p,
+.patient-shell .visit-heading p,
+.patient-shell .visit-heading h3,
+.work-shell .card p,
+.work-shell .care-heading :is(h3, p),
+.care-dialog :is(p, label, button) {
+  line-height: 1.55;
+}
+.patient-shell .section-header p,
+.patient-shell .card p,
+.work-shell .card p,
+.patient-shell .care-heading p {
+  font-size: 1rem;
+}
+.patient-shell .care-heading h3,
+.work-shell .card h3 {
+  font-size: 1.1875rem;
+}
+.patient-shell :is(.input, .select, .textarea, .btn, .member-login-error),
+.work-shell :is(.input, .select, .textarea, .btn, .member-login-error),
+.care-dialog :is(.input, .select, .textarea, .btn) {
+  font-size: 1rem;
+  line-height: 1.45;
+}
+:is(.patient-shell, .work-shell, .care-dialog) :is(.input, .select, .btn) {
+  min-height: 3.25rem;
+}
+:is(.patient-shell, .work-shell, .care-dialog) .btn {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  justify-content: center;
+  text-align: center;
+}
+:is(.patient-shell, .work-shell, .care-dialog) :is(.input, .select, .textarea) {
+  max-width: 100%;
+  min-width: 0;
+}
+.patient-shell .footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+.patient-shell .nav-items .nav-btn {
+  min-height: 48px;
+}
+
+.patient-home {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.patient-home .clinic-hero {
+  grid-column: 1 / -1;
+  min-height: 0;
+  background: linear-gradient(112deg, #081f4d, #12438b 65%, #1768ba);
+}
+.patient-home .hero-text {
+  padding: clamp(1.1rem, 4vw, 2.8rem);
+}
+.patient-home .clinic-hero h1 {
+  font-size: clamp(1.55rem, 3.8vw, 2.6rem);
+  line-height: 1.4;
+  margin: 0 0 0.75rem;
+}
+.patient-home .hero-outline {
+  color: #fff;
+  border-color: #c7e0fa;
+}
+.patient-home .hero-outline:focus-visible {
+  outline-color: #fff;
+}
+.patient-home .next-tile {
+  grid-column: span 2;
+  min-height: 0;
+  padding: 1.1rem;
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+  justify-content: start;
+}
+.patient-home .next-tile h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+.patient-home .next-tile .tag {
+  font-size: 0.875rem;
+}
+.patient-home .next-tile .btn {
+  margin-top: 0.65rem;
+}
+.patient-home .next-copy {
+  width: 100%;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+.patient-home .next-date {
+  font-size: 1.3rem;
+}
+.patient-home .service-tile {
+  min-height: 0;
+  grid-column: span 2;
+  display: grid;
+  align-items: center;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.7rem;
+  padding: 0.95rem;
+  text-align: start;
+}
+.patient-home .tile-icon {
+  width: 2.65rem;
+  height: 2.65rem;
+  border-radius: 0.75rem;
+}
+.patient-home .tile-go {
+  position: static;
+  width: auto;
+  height: auto;
+}
+.patient-home .service-tile strong {
+  margin: 0;
+  font-size: 1.125rem;
+  line-height: 1.45;
+}
+.patient-home .service-primary {
+  grid-column: span 4;
+  background: linear-gradient(125deg, #123b83, #1b65b9);
+  color: #fff;
+}
+.patient-home .service-primary :is(strong, .tile-go) {
+  color: #fff;
+}
+.patient-home .service-primary:hover {
+  background: #164b93;
+}
+.patient-home .service-primary .tile-icon {
+  background: #dbeaff;
+  color: #163e7d;
+}
+.patient-home .service-primary:focus-visible {
+  outline-offset: 4px;
+}
+.patient-home summary {
+  cursor: pointer;
+  min-height: 48px;
+  display: list-item;
+}
+.home-secondary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.6rem;
+}
+
+.booking-flow {
+  max-width: 48rem;
+  margin-inline: auto;
+}
+.booking-flow h2 {
+  font-size: 1.35rem;
+  line-height: 1.45;
+  margin: 0.1rem 0 0.8rem;
+}
+.booking-progress {
+  color: #174678;
+  font-weight: 700;
+  margin: 0;
+}
+.booking-flow .care-form {
+  margin-top: 0.8rem;
+}
+.booking-flow .care-field > span,
+.booking-flow legend,
+.work-shell .care-field > span,
+.desk-search > span {
+  font-size: 1rem;
+}
+.booking-flow .care-field small,
+#booking-phone-help {
+  display: block;
+  color: #425875;
+  font-size: 0.9rem;
+}
+.booking-flow .care-actions .btn {
+  min-height: 3.25rem;
+}
+.booking-flow .branch-choice {
+  min-height: 3.25rem;
+}
+.booking-flow .branch-choice:focus-within {
+  outline: 3px solid var(--portal-focus);
+  outline-offset: 2px;
+}
+.booking-flow .branch-choice strong {
+  font-size: 1rem;
+}
+.booking-flow .branch-picker > div,
+.booking-flow .visit-slots {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+}
+.date-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.booking-summary {
+  margin: 0;
+  padding: 0.8rem 1rem;
+  background: #edf5fd;
+  border-radius: 0.8rem;
+  color: var(--portal-ink);
+}
+.booking-summary > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  gap: 0.3rem;
+  padding: 0.55rem 0;
+}
+.booking-summary > div + div {
+  border-top: 1px solid #c7d8ec;
+}
+.booking-summary dt {
+  color: #385578;
+}
+.booking-summary dd {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.work-shell {
+  min-height: 100vh;
+  background: #eef3fa;
+  color: var(--portal-ink);
+}
+.work-header {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.05rem max(1rem, calc((100vw - 75rem) / 2));
+  background: #fff;
+  border-bottom: 1px solid #d7e4f3;
+}
+.manager-shell .work-header {
+  background: linear-gradient(115deg, #0b2356, #104b8c);
+  color: #fff;
+}
+.work-header h1 {
+  margin: 0.05rem 0 0;
+  font-size: clamp(1.5rem, 3vw, 2.15rem);
+  color: inherit;
+  line-height: 1.4;
+}
+.work-header > div:first-child > span {
+  font-weight: 760;
+}
+.work-actions,
+.work-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+}
+.work-actions .nav-btn {
+  min-height: 3.25rem;
+  background: #eaf2fd;
+  color: #133c72;
+  font-size: 1rem;
+}
+.manager-shell .work-actions .btn.outline {
+  background: #fff;
+  color: #173a70;
+}
+.manager-shell .work-actions :focus-visible {
+  outline-color: #fff;
+}
+.work-actions .lang-switch button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.work-content {
+  width: min(100%, 77rem);
+  padding: 1.15rem 1rem 2.5rem;
+  margin: auto;
+}
+.work-user {
+  font-weight: 700;
+  margin: 0 0 0.55rem;
+}
+.work-tabs {
+  margin: 0 0 1rem;
+}
+.work-login {
+  max-width: 30rem;
+  margin: 1rem auto;
+}
+.work-login .field {
+  margin-bottom: 0.85rem;
+}
+.work-login form .btn {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+.work-notice {
+  max-width: 37rem;
+  margin: 1rem auto;
+}
+.manager-branches {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+  gap: 0.8rem;
+  margin: 0.8rem 0;
+}
+.manager-branches .card {
+  display: flex;
+  align-items: start;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.manager-branches .card .btn {
+  margin-top: 0.65rem;
+}
+.branch-summary {
+  background: linear-gradient(130deg, #fff, #eaf4ff);
+}
+.large-number {
+  display: block;
+  color: #123e82;
+  font-size: 2.15rem;
+  line-height: 1.2;
+}
+.desk-search {
+  margin: 0.8rem 0;
+  max-width: 30rem;
+}
+.work-shell .desk-row {
+  grid-template-columns: 0.6fr 1.15fr 0.65fr auto;
+}
+.work-shell .desk-row small,
+.work-shell .identity-row small {
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+.work-shell .desk-filters {
+  flex-wrap: wrap;
+}
+#desk-requests {
+  scroll-margin-top: 1rem;
+}
+
+@media (max-width: 880px) {
+  html {
+    scroll-padding-bottom: calc(4.7rem + env(safe-area-inset-bottom, 0px));
+  }
+  .patient-shell .main-content {
+    padding-bottom: calc(5.7rem + env(safe-area-inset-bottom, 0px));
+  }
+  .mobile-bar {
+    height: auto;
+    min-height: 3.8rem;
+  }
+  .mobile-bar .nav-btn {
+    height: auto;
+    min-height: 52px;
+    font-size: 0.75rem;
+    white-space: normal;
+  }
+  .mobile-bar .nav-btn span {
+    overflow-wrap: anywhere;
+  }
+}
+@media (max-width: 760px) {
+  .patient-home .clinic-hero,
+  .patient-home .service-primary,
+  .patient-home .next-tile {
+    grid-column: 1 / -1;
+  }
+  .patient-home .service-tile:not(.service-primary) {
+    grid-column: span 3;
+  }
+  .work-shell .desk-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  }
+  .work-shell .desk-row .btn-group {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 430px) {
+  .patient-home .service-tile:not(.service-primary) {
+    grid-column: 1 / -1;
+  }
+  .booking-flow .care-actions > .btn.primary {
+    flex: 1 0 100%;
+  }
+  .booking-flow .branch-picker > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .work-actions {
+    gap: 0.4rem;
+  }
+  .work-header .nav-btn {
+    padding: 0.5rem;
+  }
+  .work-shell .desk-hero {
+    align-items: stretch;
+  }
+}

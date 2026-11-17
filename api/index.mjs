@@ -16,6 +16,7 @@ import {
   requestOrigin,
   getBody,
   rows,
+  countRows,
   first,
   insert,
   patch,
@@ -206,7 +207,7 @@ export async function route(req, res) {
       database: "supabase",
       version: 3,
       release: "3.1",
-      patch: "3.1.2",
+      patch: "3.2.0",
       lineConfigured: !!(cfg.lineLogin && cfg.lineToken),
     });
   }
@@ -230,6 +231,35 @@ export async function route(req, res) {
       customer: publicCustomer(c),
       staff: publicStaff(s),
     });
+  }
+  if (method === "GET" && path === "/api/me/customer")
+    return reply(res, 200, { customer: publicCustomer(await customer(req)) });
+  if (method === "GET" && path === "/api/staff/session")
+    return reply(res, 200, { staff: publicStaff(await staff(req)) });
+  if (method === "GET" && path === "/api/manager/overview") {
+    requireUser(await staff(req), ["owner"]);
+    const date = url.searchParams.get("date") || today();
+    if (!isDate(date)) throw fail(400, "Invalid date");
+    const readBranch = async (branch) => {
+      const day = {
+        date: eq(date),
+        branch_id: branch ? eq(branch) : "is.null",
+      };
+      const [visits, pending] = await Promise.all([
+        countRows("sw_bookings", {
+          ...day,
+          status: "in.(pending,confirmed,checked_in,completed)",
+        }),
+        countRows("sw_bookings", { ...day, status: "eq.pending" }),
+      ]);
+      return { branch_id: branch, visits, pending };
+    };
+    const [branches, tasks, reschedules] = await Promise.all([
+      Promise.all(["ubon", "yasothon", null].map(readBranch)),
+      countRows("sw_tasks", { status: "neq.done" }),
+      countRows("sw_reschedule", { status: "eq.pending" }),
+    ]);
+    return reply(res, 200, { date, branches, tasks, reschedules });
   }
   if (method === "POST" && path === "/api/auth/line") {
     const data = await getBody(req);

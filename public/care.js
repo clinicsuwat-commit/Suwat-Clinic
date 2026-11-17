@@ -22,6 +22,8 @@ export function createCareUI(api) {
     staffActions,
     linkStaffLine,
     refreshApp,
+    setCustomer,
+    setWorkFilter,
   } = api;
   let data = null;
   let med = null;
@@ -36,6 +38,12 @@ export function createCareUI(api) {
   let selected = "";
   let bookingKey = "";
   let bookingResult = null;
+  let bookingStep = 1;
+  let contactDraft = null;
+  let slotsLoading = false;
+  let slotsError = "";
+  let deskRevision = 0;
+  let deskSearch = "";
   let branch = "";
   let deskBranch = "";
   let stockBranch = "";
@@ -335,7 +343,8 @@ export function createCareUI(api) {
     `<div class="card care-empty">${ico(icon)}<p>${title}</p>${button}</div>`;
   const errorCard = () =>
     failure
-      ? msg(esc(failure), "attention")
+      ? msg(esc(failure), "attention") +
+        btn("retry-page", loc("ลองโหลดอีกครั้ง", "Try again"))
       : `<div class="card care-skeleton" aria-busy="true" aria-label="${t("wait")}"></div>`;
   const freshKey = () =>
     crypto.randomUUID?.() ||
@@ -449,29 +458,49 @@ export function createCareUI(api) {
   function home() {
     const next = data?.bookings
       .filter((b) => b.date >= today() && active.includes(b.status))
-      .sort((a, b) => a.date.localeCompare(b.date))[0];
-    const service = (path, icon, title, text, style = "") =>
-      `<button type="button" class="service-tile ${style}" data-nav="${path}"><span class="tile-icon">${ico(icon)}</span><span class="tile-go">${ico("arrow")}</span><strong>${title}</strong><span>${text}</span></button>`;
-    return `<div class="home-bento">
-      <section class="clinic-hero"><div class="hero-waves" aria-hidden="true"><i></i><i></i><i></i><b></b></div><div class="hero-text">
-        <p class="hero-label"><span></span> ${loc("บริการออนไลน์ของคลินิก", "ONLINE CLINIC SERVICES")}</p>
-        <h1>${loc("นัดหมายสะดวก<br><em>ดูแลต่อเนื่อง</em>", "Book your visit.<br><em>Stay connected.</em>")}</h1>
-        <div class="hero-buttons"><button class="btn white" data-nav="/booking">${ico("calendar")}${loc("จองคิว", "Book a visit")}${ico("arrow")}</button><button class="btn hero-outline" data-nav="/appointments">${loc("ดูนัดของฉัน", "My appointments")}</button></div>
-      </div></section>
-      <section class="next-tile"><span class="tile-icon">${ico("clock")}</span><h2>${loc("นัดครั้งถัดไป", "Your next appointment")}</h2>
+      .sort(
+        (a, b) =>
+          a.date.localeCompare(b.date) ||
+          timeText(a).localeCompare(timeText(b)),
+      )[0];
+    const tile = (target, icon, title, primary = false) =>
+      `<button type="button" class="service-tile ${primary ? "service-primary" : ""}" ${target.startsWith("/") ? `data-nav="${target}"` : `data-care="${target}"`}>
+        <span class="tile-icon">${ico(icon)}</span><strong>${title}</strong><span class="tile-go">${ico("arrow")}</span>
+      </button>`;
+    const bookingUrl = next
+      ? "/appointments?booking=" + encodeURIComponent(next.id)
+      : "/appointments";
+    return `<div class="home-bento patient-home">
+      <header class="clinic-hero"><div class="hero-waves" aria-hidden="true"><i></i><i></i><b></b></div><div class="hero-text">
+        <h1>${loc("คลินิกกระดูกและข้อ หมอสุวัฒน์", "Suwat Bone & Joint Clinic")}</h1>
+        <button class="btn hero-outline" data-action="text-size" aria-pressed="${state().largeText}">${state().largeText ? loc("ใช้ตัวอักษรขนาดปกติ", "Default text size") : loc("ขยายตัวอักษร", "Larger text")}</button>
+      </div></header>
+      ${tile("/booking", "calendar", loc("จองคิวพบหมอ", "Book a visit"), true)}
+      <section class="next-tile"><h2>${loc("นัดครั้งถัดไป", "Your next appointment")}</h2>
         ${
           next
-            ? `<p class="next-date">${displayDate(next.date)}</p><p class="next-copy">${esc(timeText(next))} · ${esc(branchName(next.branch_id))} · ${esc(next.patient_name)}</p>${bookingBadges(next)}`
-            : `<p class="next-copy">${state().customer ? loc("ยังไม่มีนัดที่กำลังจะมาถึง", "No upcoming appointments") : loc("เข้าสู่ระบบด้วย LINE เพื่อดูวันนัดและสถานะ", "Open with LINE to see your date and status.")}</p>`
+            ? `<p class="next-date">${displayDate(next.date)}</p><p class="next-copy">${esc(timeText(next))} · ${esc(branchName(next.branch_id))}<br>${esc(next.patient_name)}</p>${bookingBadges(next)}
+          <button class="btn outline" data-nav="${bookingUrl}">${loc("ดูรายละเอียดนัด", "View appointment")}${ico("arrow")}</button>`
+            : failure
+              ? errorCard()
+              : state().customer && !data
+                ? `<p role="status">${loc("กำลังโหลดรายการนัด…", "Loading appointments…")}</p>`
+                : state().customer
+                  ? `<p>${loc("ยังไม่มีนัดที่กำลังจะมาถึง", "No upcoming appointments")}</p>`
+                  : `<button class="btn outline" data-nav="/account">${loc("เข้าสู่ระบบด้วย LINE เพื่อดูนัด", "Sign in with LINE to view appointments")}</button>`
         }
-        <button class="text-link" data-nav="${next ? "/appointments" : state().customer ? "/booking" : "/account"}">${next ? loc("ดูรายละเอียด", "View details") : state().customer ? loc("เลือกวันนัด", "Choose a date") : loc("เข้าสู่ระบบ", "Sign in")}${ico("arrow")}</button>
       </section>
-      ${data?.duplicates.length ? `<div class="home-wide">${duplicateBox(data.duplicates)}</div>` : ""}
-      ${service("/account", "qr", loc("บัตรคนไข้ QR", "Patient QR card"), loc("เปิดบัตรเพื่อให้เจ้าหน้าที่สแกน", "Open your card for staff to scan"), "soft-blue")}
-      ${service("/medications", "pill", loc("ประวัติการจ่ายยา", "Medication history"), loc("ดูประวัติและคำขอชุดเดิม", "View past medication sets and requests"))}
-      ${service("/shop", "shop", loc("ร้านค้าคลินิก", "Clinic shop"), loc("เลือกดูผลิตภัณฑ์", "Browse clinic products"))}
-      ${service("/orders", "package", loc("คำสั่งซื้อ", "My orders"), loc("ติดตามคำสั่งซื้อสินค้า", "Track shop orders"))}
-      <button class="service-tile contact-tile" data-care="contact"><span class="tile-icon">${ico("chat")}</span><span class="tile-go">${ico("arrow")}</span><strong>${loc("ติดต่อคลินิก", "Contact clinic")}</strong><span>${loc("สอบถามผ่าน LINE ของคลินิก", "Reach the clinic on LINE")}</span></button>
+      ${data?.duplicates?.length ? `<div class="home-wide">${duplicateBox(data.duplicates)}</div>` : ""}
+      ${tile("/appointments", "clock", loc("ดูนัดของฉัน", "My appointments"))}
+      ${tile("/account", "qr", loc("แสดงบัตรคนไข้", "Show patient card"))}
+      ${tile("contact", "chat", loc("ติดต่อคลินิก", "Contact the clinic"))}
+      <details class="card home-wide"><summary>${loc("บริการอื่น ๆ", "Other services")}</summary>
+        <div class="home-secondary">
+          ${tile("/medications", "pill", loc("ประวัติการจ่ายยา", "Medication history"))}
+          ${tile("/shop", "shop", loc("ร้านค้าคลินิก", "Clinic shop"))}
+          ${tile("/orders", "package", loc("คำสั่งซื้อ", "My orders"))}
+        </div>
+      </details>
     </div>`;
   }
 
@@ -489,63 +518,135 @@ export function createCareUI(api) {
   }
 
   function bookingPage() {
-    const heading = sectionHeader(
-      loc("จองคิวคลินิก", "Book a visit"),
-      loc(
-        "เลือกคนไข้ สาขา วัน และช่วงเวลาที่สะดวก",
-        "Choose the patient, branch, date and time window.",
-      ),
-    );
+    const heading = sectionHeader(loc("จองคิวพบหมอ", "Book a visit"), "");
     if (!state().customer) return heading + loginPrompt();
     if (!data) return heading + errorCard();
     if (bookingResult) {
+      const resultUrl =
+        "/appointments?booking=" + encodeURIComponent(bookingResult.id);
       return (
         heading +
-        `<section class="card confirmation"><span class="big-check">${ico("check")}</span><h2>${loc("ส่งคำขอนัดแล้ว", "Appointment request sent")}</h2><p>${esc(bookingResult.booking_ref)} · ${displayDate(bookingResult.date)} · ${esc(branchName(bookingResult.branch_id))}</p>${statusTag(bookingResult.status)}<div class="care-actions"><button class="btn primary" data-nav="/appointments">${loc("ดูนัดของฉัน", "My appointments")}${ico("arrow")}</button>${mapLink(bookingResult.branch_id)}</div></section>`
+        `<section class="card confirmation"><span class="big-check">${ico("check")}</span>
+        <h2 tabindex="-1" data-book-step-heading>${loc("ส่งคำขอนัดแล้ว", "Appointment request sent")}</h2>
+        <p>${displayDate(bookingResult.date)} · ${esc(timeText(bookingResult))}<br>${esc(branchName(bookingResult.branch_id))}<br>${esc(bookingResult.booking_ref)}</p>
+        ${statusTag(bookingResult.status)}
+        <p>${
+          bookingResult.status === "confirmed"
+            ? loc(
+                "คลินิกจะส่งข้อความเตือนทาง LINE ก่อนวันนัด 1 วันและในวันนัด",
+                "LINE reminders arrive the day before and on the day of your visit.",
+              )
+            : loc(
+                "คลินิกจะแจ้งผลผ่าน LINE เมื่อยืนยันนัด",
+                "The clinic will send an update via LINE when the visit is confirmed.",
+              )
+        }</p>
+        <div class="care-actions"><a class="btn primary" href="${resultUrl}" data-nav="${resultUrl}">${loc("ดูรายละเอียดนัด", "View appointment")}${ico("arrow")}</a>${mapLink(bookingResult.branch_id)}</div>
+      </section>`
       );
     }
-    if (!data.patients.length) return heading + accountCards();
-    if (!state().customer.phone)
-      return (
-        heading +
-        empty(
-          "user",
-          loc(
-            "บันทึกเบอร์ติดต่อในบัญชีก่อนจองคิว",
-            "Save your phone in My account before booking.",
-          ),
-          `<button class="btn primary" data-nav="/account">${t("account")}</button>`,
-        )
-      );
+    const titles = [
+      loc("เลือกคนไข้และสาขา", "Choose a patient and branch"),
+      loc("เลือกวันและช่วงเวลา", "Choose a date and time"),
+      loc("ตรวจสอบก่อนส่ง", "Review your request"),
+    ];
+    const body =
+      bookingStep === 1
+        ? bookingSetup()
+        : bookingStep === 2
+          ? bookingTime()
+          : bookingReview();
+    return (
+      heading +
+      `<section class="card booking-flow" aria-labelledby="booking-step">
+      <p class="booking-progress">${loc("ขั้นที่ " + bookingStep + " จาก 3", "Step " + bookingStep + " of 3")}</p>
+      <h2 id="booking-step" tabindex="-1" data-book-step-heading>${titles[bookingStep - 1]}</h2>${body}
+    </section>`
+    );
+  }
+
+  function bookingSetup() {
+    if (!data.patients.length) {
+      return `<p>${loc("เพิ่มชื่อจริงของตัวเองหรือคนที่คุณดูแลเพื่อจองคิว", "Add your own name or the name of a person you look after to start booking.")}</p>
+      ${btn("add-patient", loc("เพิ่มชื่อคนไข้", "Add a patient"), "plus", "primary")}`;
+    }
     const options = data.patients
       .map(
         (p) =>
-          `<option value="${p.id}" ${String(p.id) === focusPatient ? "selected" : ""}>${esc(p.full_name)} · ${relationLabel(p.relation)}</option>`,
+          `<option value="${esc(p.id)}" ${String(p.id) === focusPatient ? "selected" : ""}>${esc(p.full_name)} · ${relationLabel(p.relation)}</option>`,
       )
       .join("");
-    const slot = bookingSlots.find((s) => s.key === selected);
+    return `<form class="care-form" data-care-form="booking-setup">
+      <label class="care-field"><span>${loc("จองคิวให้ใคร", "Who is the visit for?")}</span>
+        <select class="select" required name="patient" data-care-change="patient">${options}</select>
+      </label>
+      ${branchPicker()}
+      <label class="care-field"><span>${loc("เบอร์โทรที่คลินิกติดต่อได้", "Contact phone number")}</span>
+        <input class="input" type="tel" inputmode="tel" autocomplete="tel-national" name="phone" required pattern="0[0-9]{9}" maxlength="10" aria-describedby="booking-phone-help" data-care-input="booking-phone" value="${esc(contactDraft ?? state().customer.phone ?? "")}">
+      </label>
+      <small id="booking-phone-help">${loc("กรอก 10 หลักติดกัน เช่น 0812345678 ระบบจะบันทึกเบอร์นี้ในบัญชี", "Enter 10 digits, for example 0812345678. This number is saved to your account.")}</small>
+      <div class="care-actions">${nextButton(loc("เลือกวันและเวลา", "Choose a date and time"))}</div>
+    </form>`;
+  }
+
+  function bookingTime() {
     const tiles = bookingSlots
       .map(
-        (
-          s,
-        ) => `<div class="visit-slot ${selected === s.key ? "is-selected" : ""}"><button type="button" data-care="slot" data-value="${esc(s.key)}" ${s.closed || s.left < 1 || conflicts.length ? "disabled" : ""} aria-pressed="${selected === s.key}">
-      <strong>${esc(loc(s.label_th, s.label_en))}</strong><span>${esc(s.start)}–${esc(s.end)}</span><small>${s.closed ? t("closed") : s.left < 1 ? t("full") : loc("ว่าง " + s.left + " คิว", s.left + " open")}</small>
-    </button>${!s.closed && s.left < 1 && !conflicts.length && (date > today() || s.start > clinicClock()) ? btn("join-wait", loc("เข้าคิวสำรอง", "Join waitlist"), "bell", "soft", s.key) : ""}</div>`,
+        (s) =>
+          `<div class="visit-slot ${selected === s.key ? "is-selected" : ""}"><button type="button" data-care="slot" data-value="${esc(s.key)}" ${s.closed || s.left < 1 || conflicts.length ? "disabled" : ""} aria-pressed="${selected === s.key}">
+        <strong>${esc(loc(s.label_th, s.label_en))}</strong><span>${esc(s.start)}–${esc(s.end)}</span>
+        <small>${s.closed ? t("closed") : s.left < 1 ? t("full") : loc("ว่าง " + s.left + " คิว", s.left + " open")}</small>
+      </button>${!s.closed && s.left < 1 && !conflicts.length && (date > today() || s.start > clinicClock()) ? btn("join-wait", loc("เข้าคิวสำรอง", "Join waitlist"), "bell", "soft", s.key) : ""}</div>`,
       )
       .join("");
-    return (
-      heading +
-      `<div class="two-col care-book"><section class="card"><form data-care-form="booking">
-      ${branchPicker()}
-      <div class="care-fields"><label class="care-field"><span>${loc("คนไข้", "Patient")}</span><select class="select" name="patient" data-care-change="patient">${options}</select></label>
-      <label class="care-field"><span>${loc("วันนัด", "Appointment date")}</span><input class="input" ${dateInput("date")} value="${esc(date)}" data-care-change="booking-date"></label></div>
-      ${conflicts.length ? msg(`<strong>${loc("มีนัดในวันเดียวกันแล้ว", "You already have a visit that day")}</strong><br>${esc(conflicts.map((b) => b.booking_ref).join(" · "))} <button type="button" class="text-link" data-nav="/appointments">${loc("ดูนัดหรือขอเลื่อน", "View or reschedule")}${ico("arrow")}</button>`, "attention") : ""}
-      <h3 class="care-subhead">${loc("ช่วงเวลา", "Time window")}</h3><div class="visit-slots">${tiles || `<p class="muted">${branch ? loc("ยังไม่มีช่วงเวลาที่เปิดให้จอง", "There are no booking windows to show.") : loc("เลือกสาขาเพื่อดูคิวว่าง", "Choose a branch to see available times.")}</p>`}</div>
-      <label class="care-field"><span>${loc("ฝากข้อความถึงคลินิก (ถ้ามี)", "Message to the clinic (optional)")}</span><textarea class="textarea" name="note" maxlength="500" data-care-input="booking-note">${esc(note)}</textarea></label>
-      <div class="care-actions"><button type="submit" class="btn primary" ${!branch || !slot || conflicts.length ? "disabled" : ""}>${loc("ส่งคำขอนัด", "Send booking request")}${ico("arrow")}</button></div>
-      </form></section><aside class="card care-side"><span class="tile-icon">${ico("bell")}</span><h3>${loc("แจ้งเตือนผ่าน LINE", "LINE reminders")}</h3><p>${loc("เมื่อคลินิกยืนยันนัด ระบบเตือนก่อนวันนัด 1 วัน และเช้าวันนัด", "Once confirmed, we remind you the day before and on the morning of your visit.")}</p>
-      ${state().config.lineOaUrl ? `<a class="text-link" href="${esc(state().config.lineOaUrl)}" target="_blank" rel="noopener">${loc("เพิ่ม LINE OA ของคลินิก", "Add the clinic LINE account")}${ico("arrow")}</a>` : ""}</aside></div>`
-    );
+    return `<form class="care-form" data-care-form="booking-time">
+      <p class="muted">${esc(branchName(branch))}</p>
+      <label class="care-field"><span>${loc("วันที่สะดวก", "Appointment date")}</span><input class="input" ${dateInput("date")} value="${esc(date)}" data-care-change="booking-date"></label>
+      <div class="date-shortcuts">${btn("booking-day", loc("วันนี้", "Today"), "", "outline", today())}${btn("booking-day", loc("พรุ่งนี้", "Tomorrow"), "", "outline", later(1))}</div>
+      <div class="booking-windows" aria-busy="${slotsLoading}">
+        ${conflicts.length ? msg(`<strong>${loc("มีนัดในวันเดียวกันแล้ว", "You already have a visit that day")}</strong><br>${esc(conflicts.map((b) => b.booking_ref).join(" · "))} <button type="button" class="btn outline" data-nav="/appointments">${loc("ดูนัดหรือขอเลื่อน", "View or reschedule")}</button>`, "attention") : ""}
+        ${
+          slotsLoading
+            ? `<p role="status">${loc("กำลังดูคิวว่าง…", "Checking availability…")}</p>`
+            : slotsError
+              ? msg(esc(slotsError), "attention") +
+                btn(
+                  "booking-reload",
+                  loc("ลองโหลดคิวอีกครั้ง", "Retry availability"),
+                  "",
+                  "outline",
+                )
+              : `<div class="visit-slots">${tiles || `<p>${loc("ลองเลือกวันที่อื่นเพื่อดูคิวว่าง", "Choose another date to find an available time.")}</p>`}</div>`
+        }
+      </div>
+      <div class="care-actions">${btn("booking-back", loc("ย้อนกลับ", "Back"))}
+        <button type="submit" class="btn primary" ${!date || !selected || slotsLoading || slotsError || conflicts.length ? "disabled" : ""}>${loc("ตรวจสอบคำขอ", "Review request")}${ico("arrow")}</button>
+      </div>
+    </form>`;
+  }
+
+  function bookingReview() {
+    const patient = data.patients.find((p) => String(p.id) === focusPatient);
+    const slot = bookingSlots.find((s) => s.key === selected);
+    const summary = [
+      [loc("ชื่อคนไข้", "Patient"), patient?.full_name || ""],
+      [loc("สาขาคลินิก", "Clinic branch"), branchName(branch)],
+      [
+        loc("วันและช่วงเวลา", "Date and time"),
+        displayDate(date) + (slot ? " · " + slot.start + "–" + slot.end : ""),
+      ],
+      [loc("เบอร์ติดต่อ", "Contact phone"), state().customer.phone || ""],
+    ];
+    return `<form class="care-form" data-care-form="booking">
+      <dl class="booking-summary">${summary.map(([label, value]) => `<div><dt>${label}</dt><dd>${esc(value)}</dd></div>`).join("")}</dl>
+      <label class="care-field"><span>${loc("ฝากข้อความถึงคลินิก (ถ้ามี)", "Message to the clinic (optional)")}</span>
+        <textarea class="textarea" name="note" maxlength="500" rows="2" data-care-input="booking-note">${esc(note)}</textarea>
+      </label>
+      <p>${loc("เมื่อยืนยันนัดแล้ว คลินิกจะส่งข้อความเตือนทาง LINE ก่อนวันนัด 1 วันและในวันนัด", "Once confirmed, LINE reminders arrive the day before and on the day of your visit.")}</p>
+      <div class="care-actions">${btn("booking-back", loc("ย้อนกลับ", "Back"))}
+        <button type="submit" class="btn primary">${loc("ส่งคำขอนัด", "Send booking request")}${ico("arrow")}</button>
+      </div>
+    </form>`;
   }
 
   function appointmentsPage() {
@@ -719,12 +820,28 @@ export function createCareUI(api) {
     );
   }
 
+  function deskKey(booking) {
+    return (
+      booking.patient_name +
+      " " +
+      booking.booking_ref
+    ).toLocaleLowerCase();
+  }
+
+  function filterDesk() {
+    const rows = [...root.querySelectorAll("[data-desk-key]")];
+    const search = deskSearch.trim().toLocaleLowerCase();
+    for (const row of rows) row.hidden = !row.dataset.deskKey.includes(search);
+    const empty = root.querySelector("[data-desk-no-results]");
+    if (empty) empty.hidden = !search || rows.some((row) => !row.hidden);
+  }
+
   function visitRows(bookings, withActions = true) {
     return (
       bookings
         .map(
           (b) =>
-            `<div class="desk-row"><span class="desk-time">${esc(timeText(b))}</span><div><strong>${esc(b.patient_name)}</strong><small>${esc(b.booking_ref)} · ${esc(branchName(b.branch_id))}</small></div><div>${bookingBadges(b)}</div>${withActions ? staffActions(b) : ""}</div>`,
+            `<div class="desk-row" ${withActions ? `data-desk-key="${esc(deskKey(b))}" ${deskKey(b).includes(deskSearch.trim().toLocaleLowerCase()) ? "" : "hidden"}` : ""}><span class="desk-time">${esc(timeText(b))}</span><div><strong>${esc(b.patient_name)}</strong><small>${esc(b.booking_ref)} · ${esc(branchName(b.branch_id))}</small></div><div>${bookingBadges(b)}</div>${withActions ? staffActions(b) : ""}</div>`,
         )
         .join("") ||
       `<div class="care-empty"><p>${loc("ไม่มีรายการนัด", "No appointments")}</p></div>`
@@ -762,9 +879,12 @@ export function createCareUI(api) {
         .join("")}</div>
       ${duplicateBox(desk.duplicates)}
       ${desk.reminders.failed ? msg(loc("มีการแจ้งเตือนที่ส่งไม่สำเร็จหรือหมดเวลา ", "Failed or expired reminders: ") + desk.reminders.failed, "attention") : ""}
-      <div class="desk-bento"><section class="card desk-main"><div class="care-heading"><div><h3>${loc("รายการนัด", "Appointments")}</h3><p>${displayDate(desk.date)}</p></div><div class="desk-filters">${branchSelect("desk_branch", deskBranch, "desk-branch", false, true)}<label class="care-field"><span>${loc("เลือกวัน", "Select day")}</span><input id="staffDate" class="input" type="date" value="${esc(desk.date)}"></label></div></div>${visitRows(desk.bookings)}</section>
+      <div class="desk-bento"><section class="card desk-main"><div class="care-heading"><div><h3>${loc("รายการนัด", "Appointments")}</h3><p>${displayDate(desk.date)}</p></div><div class="desk-filters">${branchSelect("desk_branch", deskBranch, "desk-branch", false, true)}<label class="care-field"><span>${loc("เลือกวัน", "Select day")}</span><input id="staffDate" class="input" type="date" value="${esc(desk.date)}"></label></div></div><label class="care-field desk-search"><span>${loc("ค้นหาชื่อหรือเลขนัด", "Find by name or booking number")}</span>
+        <input class="input" type="search" data-care-input="desk-search" value="${esc(deskSearch)}"></label>
+        ${desk.bookings.length ? visitRows(desk.bookings) : `<p>${loc("ไม่มีรายการนัดในวันที่เลือก", "No appointments for the selected day.")}</p>`}
+        <p data-desk-no-results role="status" ${!deskSearch.trim() || desk.bookings.some((b) => deskKey(b).includes(deskSearch.trim().toLocaleLowerCase())) ? "hidden" : ""}>${loc("ไม่พบนัดที่ตรงกับคำค้น", "No matching appointments.")}</p></section>
         <section class="card"><h3>${loc("วันถัดไป", "Following day")}</h3>${visitRows(desk.tomorrow, false)}</section>
-        <section class="card desk-main"><h3>${loc("คำขอเลื่อนนัด", "Reschedule requests")}</h3>${
+        <section id="desk-requests" class="card desk-main"><h3>${loc("คำขอเลื่อนนัด", "Reschedule requests")}</h3>${
           desk.requests
             .map(
               (
@@ -1196,22 +1316,73 @@ export function createCareUI(api) {
     if (!s.some((v) => v.key === selected && v.left > 0)) selected = "";
   }
 
+  function focusBooking() {
+    root.querySelector("[data-book-step-heading]")?.focus();
+  }
+
+  async function updateBookingAvailability() {
+    slotsLoading = true;
+    slotsError = "";
+    render();
+    const load = reloadBooking();
+    const revision = stepKey;
+    try {
+      await load;
+    } catch (error) {
+      if (revision === stepKey) {
+        selected = "";
+        slotsError = loc(
+          "ดูคิวว่างไม่ได้ในตอนนี้ ลองโหลดอีกครั้ง",
+          "Availability is temporarily unavailable. Try again.",
+        );
+      }
+    } finally {
+      if (revision === stepKey) {
+        slotsLoading = false;
+        if (state().page === "/booking" && bookingStep === 2) {
+          const headingFocused = document.activeElement?.hasAttribute(
+            "data-book-step-heading",
+          );
+          render();
+          if (headingFocused) focusBooking();
+        }
+      }
+    }
+  }
+
+  async function loadPermissions() {
+    const account = state().staff;
+    const result = await request(sp + "permissions");
+    if (account && state().staff === account) permissions = result.staff;
+  }
+
   async function refresh(page, staffDate = today()) {
     failure = "";
-    if (page === "/staff" || page === "/booking" || page === "/appointments")
+    const staff = page === "/staff" ? state().staff : null;
+    const loadDesk = staff && staff.role !== "store";
+    const revision = loadDesk ? ++deskRevision : null;
+    const filter = loadDesk
+      ? new URLSearchParams(location.search).get("branch")
+      : "";
+    if (["/", "/staff", "/manager", "/booking", "/appointments"].includes(page))
       await refreshLocations().catch(() => {});
-    if (page === "/staff" && state().staff && state().staff.role !== "store") {
-      try {
-        desk = await request(
-          sp +
-            "workspace?" +
-            new URLSearchParams({ date: staffDate, branch: deskBranch }),
-        );
-      } catch (e) {
-        failure = errorText(e);
+    if (loadDesk) {
+      if (!state().staff || revision !== deskRevision) return;
+      const chosen = locationList.some((item) => item.id === filter)
+        ? filter
+        : "";
+      const workspace = await request(
+        sp +
+          "workspace?" +
+          new URLSearchParams({ date: staffDate, branch: chosen }),
+      );
+      if (revision === deskRevision) {
+        deskBranch = chosen;
+        desk = workspace;
       }
       return;
     }
+    if (page === "/manager") return;
     if (!state().customer) return;
     try {
       if (["/", "/booking", "/appointments", "/account"].includes(page)) {
@@ -1219,7 +1390,6 @@ export function createCareUI(api) {
         if (!data.patients.some((p) => String(p.id) === focusPatient))
           focusPatient = String(data.patients[0]?.id || "");
       }
-      if (page === "/booking" && focusPatient) await reloadBooking();
       if (page === "/medications") med = await request(cp + "medications");
     } catch (e) {
       failure = errorText(e);
@@ -1331,19 +1501,23 @@ export function createCareUI(api) {
     if (dispense) medicationUI.update(dispense);
     const action = el.dataset.careChange;
     if (!action) return;
-    if (
-      action === "patient" ||
-      action === "booking-date" ||
-      action === "booking-branch"
-    ) {
-      if (action === "booking-branch") branch = el.value;
-      if (action === "patient") focusPatient = el.value;
-      if (action === "booking-date") date = el.value;
-      if (!date) return;
+    if (action === "booking-branch" || action === "patient") {
       selected = "";
       bookingKey = "";
-      await reloadBooking();
-      if (state().page === "/booking") render();
+    }
+    if (action === "booking-branch") {
+      branch = el.value;
+      el.form.querySelectorAll(".branch-choice").forEach((label) => {
+        label.classList.toggle("selected", label.contains(el));
+      });
+    }
+    if (action === "patient") focusPatient = el.value;
+    if (action === "booking-date" && el.validity.valid) {
+      date = el.value;
+      selected = "";
+      bookingKey = "";
+      await updateBookingAvailability();
+      root.querySelector('[data-care-change="booking-date"]')?.focus();
     }
     if (action === "med-filter") {
       medsFilter = el.value;
@@ -1377,9 +1551,9 @@ export function createCareUI(api) {
     }
     if (action === "visit-slot") setClock(el);
     if (action === "desk-branch") {
-      deskBranch = el.value;
-      await refresh("/staff", desk?.date);
-      render();
+      setWorkFilter("branch", el.value);
+      await refreshApp();
+      root.querySelector('[data-care-change="desk-branch"]')?.focus();
     }
     if (action === "stock-branch" || action === "stock-intake-branch")
       await changeStockBranch(el.value);
@@ -1462,10 +1636,28 @@ export function createCareUI(api) {
         ${nextButton(loc("บันทึกสาขา", "Save branch"), "check")}</form>`,
       );
     }
+    if (action === "retry-page") await refreshApp();
+    if (action === "booking-back") {
+      bookingStep--;
+      render();
+      focusBooking();
+    }
+    if (action === "booking-day" || action === "booking-reload") {
+      if (action === "booking-day") {
+        date = value;
+        selected = "";
+        bookingKey = "";
+      }
+      await updateBookingAvailability();
+      root.querySelector('[data-care-change="booking-date"]')?.focus();
+    }
     if (action === "slot") {
       selected = value;
       bookingKey = "";
       render();
+      [...root.querySelectorAll('[data-care="slot"]')]
+        .find((button) => button.dataset.value === value)
+        ?.focus();
     }
     if (action === "join-wait") {
       if (
@@ -1575,7 +1767,6 @@ export function createCareUI(api) {
           }),
         );
       }
-      permissions = (await request(sp + "permissions")).staff;
       await refreshApp();
     }
   }
@@ -1583,8 +1774,44 @@ export function createCareUI(api) {
   async function submit(form) {
     const kind = form.dataset.careForm;
     const d = Object.fromEntries(new FormData(form));
+    if (kind === "booking-setup") {
+      if (!d.patient || !d.branch_id || !/^0[0-9]{9}$/.test(d.phone)) return;
+      if (d.patient !== focusPatient || d.branch_id !== branch) {
+        selected = "";
+        bookingKey = "";
+      }
+      focusPatient = d.patient;
+      branch = d.branch_id;
+      contactDraft = d.phone;
+      if (contactDraft !== state().customer.phone) {
+        const result = await sending(() =>
+          post("/api/me/phone", { phone: contactDraft }),
+        );
+        setCustomer(result.customer);
+      }
+      if (state().page !== "/booking") return;
+      bookingStep = 2;
+      const loading = updateBookingAvailability();
+      focusBooking();
+      await loading;
+      return;
+    }
+    if (kind === "booking-time") {
+      if (
+        d.date !== date ||
+        !selected ||
+        slotsLoading ||
+        slotsError ||
+        conflicts.length
+      )
+        return;
+      bookingStep = 3;
+      render();
+      focusBooking();
+      return;
+    }
     if (kind === "booking") {
-      if (!branch || !selected || conflicts.length) return;
+      if (bookingStep !== 3 || !branch || !selected || conflicts.length) return;
       bookingKey ||= freshKey();
       const result = await sending(() =>
         post(cp + "book", {
@@ -1596,12 +1823,13 @@ export function createCareUI(api) {
           request_id: bookingKey,
         }),
       );
+      if (state().page !== "/booking") return;
       bookingResult = result.booking;
+      const slot = bookingSlots.find((item) => item.key === selected);
+      if (slot && !bookingResult.slot)
+        bookingResult.slot = { start_time: slot.start, end_time: slot.end };
       render();
-      finish(
-        loc("บันทึกคำขอนัดแล้ว", "Booking request saved"),
-        result.booking.booking_ref + " · " + displayDate(result.booking.date),
-      );
+      focusBooking();
     }
     if (kind === "patient") {
       await sending(() =>
@@ -1789,6 +2017,13 @@ export function createCareUI(api) {
     const form = event.target.closest('form[data-care-form="dispense"]');
     if (form) medicationUI.update(form);
 
+    if (event.target.dataset.careInput === "booking-phone") {
+      contactDraft = event.target.value;
+    }
+    if (event.target.dataset.careInput === "desk-search") {
+      deskSearch = event.target.value;
+      filterDesk();
+    }
     if (event.target.dataset.careInput === "booking-note") {
       note = event.target.value;
       bookingKey = "";
@@ -1839,6 +2074,8 @@ export function createCareUI(api) {
     staffOverview,
     staffRefills,
     staffPermissions,
+    loadPermissions,
+    resetWork,
     staffLine,
     refresh,
     followLink,
@@ -1854,18 +2091,33 @@ export function createCareUI(api) {
     reset: () => {
       data = null;
       med = null;
-      desk = null;
-      medicineStock = null;
-      stockBranch = "";
-      deskBranch = "";
-      permissions = [];
+      resetWork();
       focusPatient = "";
       resetVisit();
     },
     resetVisit,
   };
 
+  function resetWork() {
+    deskRevision++;
+    desk = null;
+    deskSearch = "";
+    medicineStock = null;
+    dispensingStock = [];
+    stockBranch = "";
+    deskBranch = "";
+    permissions = [];
+    code = "";
+    ctx = null;
+  }
+
   function resetVisit() {
+    stepKey++;
+    bookingStep = 1;
+    contactDraft = null;
+    slotsLoading = false;
+    slotsError = "";
+    bookingSlots = [];
     bookingResult = null;
     selected = "";
     bookingKey = "";

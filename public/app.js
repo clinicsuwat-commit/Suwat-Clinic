@@ -1,4 +1,4 @@
-import { createCareUI } from "./care.js?v=3.1.2";
+import { createCareUI } from "./care.js?v=3.2.0";
 import {
   authenticateLineCustomer,
   clearExternalLineSession,
@@ -78,7 +78,12 @@ const later = (days) => {
   return d.toISOString().slice(0, 10);
 };
 let lang = localStorage.getItem("sc_lang") === "en" ? "en" : "th";
+let largeText = localStorage.getItem("sc_large_text") === "1";
+const isWorkPage = (path) => path === "/staff" || path === "/manager";
 function pageFromLocation() {
+  const path = location.pathname.replace(/\/$/, "");
+  if (path === "/admin") return "/manager";
+  if (isWorkPage(path)) return path;
   const views = [
     "booking",
     "shop",
@@ -90,8 +95,6 @@ function pageFromLocation() {
   ];
   const requestedView = new URLSearchParams(location.search).get("view");
   if (views.includes(requestedView)) return "/" + requestedView;
-  const path = location.pathname;
-  if (path === "/admin" || path === "/manager") return "/staff";
   return views.includes(path.slice(1)) ? path : "/";
 }
 let page = pageFromLocation();
@@ -104,8 +107,15 @@ let config = { demo: false, liffId: "" },
   orderResult = null,
   cart = {},
   cartOpen = false,
-  adminTab = location.pathname === "/manager" ? "settings" : "overview",
+  adminTab = new URLSearchParams(location.search).get("tab") || "overview",
   loading = false;
+let workSession = "checking";
+let workError = false;
+let workAccessDenied = false;
+let workRev = 0;
+let managerData = null;
+let loginError = "";
+let sessionExpired = false;
 try {
   cart = JSON.parse(localStorage.getItem("sc_cart") || "{}");
 } catch {
@@ -579,15 +589,46 @@ const pName = (p) => (lang === "th" ? p.title_th : p.title_en);
 const pDesc = (p) => (lang === "th" ? p.desc_th : p.desc_en);
 const sLabel = (s) => (lang === "th" ? s.label_th : s.label_en);
 function q(url) {
+  const oldPage = page;
   history.pushState({}, "", url);
-  page = url;
-  care.resetVisit();
+  page = pageFromLocation();
+  if (oldPage !== page) {
+    care.resetVisit();
+    adminTab = new URLSearchParams(location.search).get("tab") || "overview";
+    workError = false;
+    workAccessDenied = false;
+  }
   care.closeModal(false);
   orderResult = null;
   cartOpen = false;
   render();
   refreshForPage();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo(0, 0);
+}
+function updateWorkFilter(name, value) {
+  const url = new URL(location.href);
+  if (value) url.searchParams.set(name, value);
+  else url.searchParams.delete(name);
+  history.replaceState(history.state, "", url);
+}
+function selectedWorkDate() {
+  const date = new URLSearchParams(location.search).get("date");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) return today();
+  const parsed = new Date(date + "T00:00:00Z");
+  return !Number.isNaN(+parsed) && parsed.toISOString().slice(0, 10) === date
+    ? date
+    : today();
+}
+function clearWorkSession(expired = false) {
+  workRev++;
+  me.staff = null;
+  staffData = managerData = null;
+  workSession = "signed-out";
+  sessionExpired = expired;
+  workError = workAccessDenied = false;
+  care.closeModal(false);
+  care.resetWork();
+  render();
 }
 function showToast(msg) {
   const el = document.getElementById("toast");
@@ -608,9 +649,18 @@ async function request(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await r.json().catch(() => ({}));
+  if (
+    r.status === 401 &&
+    isWorkPage(page) &&
+    me.staff &&
+    (url.startsWith("/api/staff/") || url.startsWith("/api/manager/")) &&
+    url !== "/api/staff/login"
+  )
+    clearWorkSession(true);
   if (!r.ok)
     throw Object.assign(new Error(data.error || `HTTP ${r.status}`), {
       code: data.code,
+      status: r.status,
     });
   return data;
 }
@@ -636,7 +686,7 @@ function navItem(path, label, iconName) {
   return `<a href="${path}" class="nav-btn ${active ? "active" : ""}" data-nav="${path}" ${active ? 'aria-current="page"' : ""}>${ico(iconName)}<span>${label}</span></a>`;
 }
 function shell(content) {
-  const staff = page === "/staff";
+  if (isWorkPage(page)) return workShell(content);
   const mainLinks = [
     ["/", t("home"), "home"],
     ["/booking", t("booking"), "calendar"],
@@ -649,26 +699,21 @@ function shell(content) {
   const mobile = [
     mainLinks[0],
     mainLinks[1],
-    mainLinks[2],
-    mainLinks[3],
-    mainLinks[6],
+    ["/appointments", loc("ดูนัด", "Visits"), "clock"],
+    ["/medications", loc("ประวัติยา", "My meds"), "pill"],
+    ["/account", loc("บัญชี", "Account"), "user"],
   ];
   const link = (links) =>
     links.map(([path, label, icon]) => navItem(path, label, icon)).join("");
   const brand = `<span class="brand-logo">${ico("cross")}</span><span>Suwat <b>Clinic</b></span>`;
-  const shortPage = staff
-    ? t("staff")
-    : page === "/"
-      ? loc("หน้าหลัก", "Home")
-      : t(page.slice(1));
-  return `<div class="shell"><aside class="sidebar"><a class="brand" href="/" data-nav="/">${brand}</a><div class="nav-items">${link(mainLinks)}</div>
-    <div class="side-bottom">${navItem("/staff", t("staff"), "users")}</div></aside>
-    <main class="main"><header class="topbar"><a class="brand mobile-brand" href="/" data-nav="/">${brand}</a>
+  const shortPage = page === "/" ? loc("หน้าหลัก", "Home") : t(page.slice(1));
+  return `<a class="skip-link" href="#main-work">${loc("ข้ามไปเนื้อหาหลัก", "Skip to content")}</a><div class="shell patient-shell"><aside class="sidebar"><a class="brand" href="/" data-nav="/">${brand}</a><div class="nav-items">${link(mainLinks)}</div></aside>
+    <div class="main"><header class="topbar"><a class="brand mobile-brand" href="/" data-nav="/">${brand}</a>
       <div class="top-left"><span class="eyebrow">SUWAT CLINIC</span><h2>${shortPage}</h2></div>
       <div class="top-actions"><div class="lang-switch" aria-label="${t("currentLang")}"><button data-lang="th" class="${lang === "th" ? "active" : ""}" aria-pressed="${lang === "th"}">ไทย</button><button data-lang="en" class="${lang === "en" ? "active" : ""}" aria-pressed="${lang === "en"}">EN</button></div>
-      <button type="button" class="avatar" data-nav="${staff ? "/" : "/account"}" aria-label="${staff ? t("home") : t("account")}">${ico(staff ? "home" : "user")}</button></div></header>
-      <div class="main-content">${content}<footer class="footer"><span>© ${new Date().getFullYear()} Suwat Clinic</span><button type="button" class="text-link" data-nav="${staff ? "/" : "/staff"}">${staff ? t("home") : t("staff")}${ico("arrow")}</button></footer></div>
-    </main></div><nav class="mobile-bar" aria-label="${t("navMenu")}">${link(mobile)}</nav>`;
+      <button type="button" class="avatar" data-nav="/account" aria-label="${t("account")}">${ico("user")}</button></div></header>
+      <main class="main-content" id="main-work" tabindex="-1">${content}<footer class="footer"><span>© ${new Date().getFullYear()} Suwat Clinic</span><button type="button" class="btn outline text-size-toggle" data-action="text-size" aria-pressed="${largeText}">${largeText ? loc("ตัวอักษรขนาดปกติ", "Default text size") : loc("ขยายตัวอักษร", "Larger text")}</button></footer></main>
+    </div></div><nav class="mobile-bar" aria-label="${t("navMenu")}">${link(mobile)}</nav>`;
 }
 function sectionHeader(title, sub, tail = "") {
   return `<div class="section-header"><div><span class="eyebrow">SUWAT CLINIC</span><h2>${title}</h2>${sub ? `<p>${sub}</p>` : ""}</div>${tail}</div>`;
@@ -745,29 +790,65 @@ function account() {
   return `${sectionHeader(t("myAccount"), t("lineMember"))}<div class="account-grid">${care.accountCards()}<div class="card account-card"><div class="profile-badge">${ico("user")}</div><h3>${esc(me.customer.display_name)}</h3><p class="muted" style="font-size:12px">${config.demo ? t("demoMember") : t("lineMember")}</p><div class="divider"></div><form data-form="profile"><div class="field"><label>${t("name")}</label><input class="input" name="name" required minlength="2" maxlength="100" value="${esc(me.customer.display_name)}"></div><div class="field"><label>${t("currentLang")}</label><select class="select" name="language"><option value="th" ${lang === "th" ? "selected" : ""}>ภาษาไทย</option><option value="en" ${lang === "en" ? "selected" : ""}>English</option></select></div><button class="btn primary">${t("save")} ${ico("check")}</button></form><div class="divider"></div><h3>${t("phoneSaveTitle")}</h3><p class="muted" style="font-size:13px">${t("phoneSaveHelp")}</p><div class="alert">${ico("info")} ${me.customer.phone_verified ? t("phonePreviouslyVerified") : t("phoneSelfReported")}</div><form data-form="phone-save"><div class="field"><label for="member_phone">${t("phone")}</label><input id="member_phone" class="input" name="phone" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="08XXXXXXXX" pattern="0[0-9]{9}" maxlength="10" value="${esc(me.customer.phone || "")}" required></div><button class="btn primary">${t("phoneSave")} ${ico("check")}</button></form><p class="caption-note">${t("phoneNoSms")}</p><div class="divider"></div><button class="btn outline" data-action="logout">${ico("logout")} ${t("logout")}</button></div></div>`;
 }
 function staffLogin() {
-  return `${sectionHeader(t("staffLogin"), t("protected"))}<div class="card login-card"><div class="profile-badge">${ico("lock")}</div><h3>${t("staffLogin")}</h3><p>${t("protected")}</p><form data-form="staff-login"><div class="field"><label>${lang === "th" ? "อีเมลพนักงาน" : "Staff email"}</label><input class="input" name="username" autocomplete="username" required placeholder="owner@example.com"></div><div class="field"><label>${t("password")}</label><input class="input" name="password" type="password" autocomplete="current-password" required></div><button class="btn primary" style="width:100%">${t("signIn")} ${ico("arrow")}</button></form>${config.demo ? `<p class="caption-note" style="margin-top:12px">Demo only: owner / demo1234 · reception / staff1234. These accounts do not exist in live mode.</p>` : ""}</div>`;
+  return `<section class="card login-card work-login"><h2>${loc("เข้าสู่ระบบด้วยบัญชีที่ทำงาน", "Sign in with your work account")}</h2>
+    ${sessionExpired ? `<p role="status">${loc("หมดเวลาใช้งาน เข้าสู่ระบบอีกครั้งเพื่อกลับมาทำงานเดิม", "Your session expired. Sign in to return to your work.")}</p>` : ""}
+    ${loginError ? `<p class="member-login-error" role="alert">${esc(loginError)}</p>` : ""}
+    <form data-form="staff-login">
+    <label class="field">${loc("อีเมลพนักงาน", "Work email")}<input class="input" type="email" name="username" autocomplete="username" required></label>
+    <label class="field">${t("password")}<input class="input" name="password" type="password" autocomplete="current-password" required></label>
+    <button type="submit" class="btn primary">${loc("เข้าสู่ระบบ", "Sign in")} ${ico("arrow")}</button></form></section>`;
 }
-const metric = (icoName, value, label) =>
-  `<div class="metric"><span class="metric-icon">${ico(icoName)}</span><div class="metric-value">${value}</div><div class="metric-label">${label}</div></div>`;
-function staff() {
-  if (!me.staff) return staffLogin();
-  if (!staffData) return `<div class="skeleton"></div>`;
-  const {
-    metrics,
-    bookings: rows,
-    orders: orows,
-    tasks,
-    slots: slotData,
-    products: prd,
-    staff: user,
-  } = staffData;
-  const owner = user.role === "owner",
-    reception = user.role === "reception",
-    store = user.role === "store";
-  const tabs = [
-    ["overview", t("dashboard")],
-    ["queue", t("queue")],
-    ...(user.clinical_access && !store
+function workShell(content) {
+  const manager = page === "/manager";
+  return `<a class="skip-link" href="#main-work">${loc("ข้ามไปเนื้อหาหลัก", "Skip to content")}</a>
+  <div class="work-shell ${manager ? "manager-shell" : "staff-shell"}">
+    <header class="work-header"><div><span>Suwat Clinic</span><h1>${manager ? loc("ระบบผู้บริหาร", "Manager workspace") : loc("ระบบสตาฟ", "Staff workspace")}</h1></div>
+      <div class="work-actions"><div class="lang-switch" aria-label="${t("currentLang")}"><button data-lang="th" aria-pressed="${lang === "th"}" class="${lang === "th" ? "active" : ""}">ไทย</button><button data-lang="en" aria-pressed="${lang === "en"}" class="${lang === "en" ? "active" : ""}">EN</button></div>
+      <button class="btn outline" data-action="text-size" aria-pressed="${largeText}">${largeText ? loc("ขนาดปกติ", "Default text") : loc("ขยายตัวอักษร", "Larger text")}</button>
+      ${me.staff?.role === "owner" || (manager && me.staff) ? navItem(manager ? "/staff" : "/manager", manager ? loc("ไปหน้าสตาฟ", "Open staff workspace") : loc("ไปหน้าผู้บริหาร", "Open manager workspace"), manager ? "users" : "chart") : ""}
+      ${me.staff ? `<button class="btn outline" data-action="staff-logout">${t("logout")}</button>` : ""}</div>
+    </header><main id="main-work" tabindex="-1" class="work-content">${content}</main>
+  </div>`;
+}
+function workNotice(message, retry = false) {
+  return `<section class="card work-notice" role="${retry ? "alert" : "status"}"><p>${message}</p>
+    ${retry ? `<button class="btn primary" data-action="work-retry">${loc("ลองอีกครั้ง", "Try again")}</button>` : ""}</section>`;
+}
+function managerOverview() {
+  if (!managerData) return workNotice(t("wait"));
+  const { date, branches, tasks, reschedules } = managerData;
+  return `<section class="work-summary"><div class="care-heading"><h2>${loc("ภาพรวมสองสาขา", "Branch overview")}</h2>
+    <label class="care-field"><span>${loc("วันที่ดูคิว", "Appointment date")}</span><input type="date" class="input" id="staffDate" value="${esc(date)}"></label></div>
+    <div class="manager-branches">${branches
+      .filter((b) => b.branch_id || b.visits)
+      .map(
+        (
+          b,
+        ) => `<article class="card branch-summary"><h3>${b.branch_id ? esc(care.branchName(b.branch_id)) : loc("ยังไม่ระบุสาขา", "Branch not assigned")}</h3>
+      <strong class="large-number">${b.visits}</strong><span>${loc("นัดในวันที่เลือก", "Appointments on this date")}</span>
+      <p>${loc("รอกดยืนยัน", "Awaiting confirmation")} <strong>${b.pending}</strong></p></article>`,
+      )
+      .join("")}</div>
+    <div class="manager-branches"><article class="card"><h3>${loc("งานที่ยังไม่เสร็จ", "Open tasks")}</h3><strong class="large-number">${tasks}</strong><a class="btn outline" href="/staff?tab=tasks" data-nav="/staff?tab=tasks">${loc("ดูงานที่ต้องทำ", "View tasks")}</a></article>
+    <article class="card"><h3>${loc("คำขอเลื่อนนัด", "Reschedule requests")}</h3><strong class="large-number">${reschedules}</strong><a class="btn outline" href="/staff#desk-requests" data-nav="/staff#desk-requests">${loc("ไปหน้าคิว", "Open appointments")}</a></article></div>
+  </section>`;
+}
+function workTabs(user) {
+  if (page === "/manager")
+    return [
+      ["overview", loc("ภาพรวม", "Overview")],
+      ["settings", loc("ตั้งค่าคิวและสาขา", "Appointments and branches")],
+      ["people", loc("บัญชีและสิทธิ์", "Accounts and access")],
+      ["inventory", t("inventory")],
+    ];
+  return [
+    [
+      "overview",
+      user.role === "store"
+        ? t("dashboard")
+        : loc("คิวและเช็กอิน", "Queue and check-in"),
+    ],
+    ...(user.clinical_access && user.role !== "store"
       ? [
           ["med-stock", loc("สต็อกยา", "Medication stock")],
           ["refills", loc("คำขอชุดยาเดิม", "Medication requests")],
@@ -775,16 +856,54 @@ function staff() {
       : []),
     ["tasks", t("tasks")],
     ["orders", t("staffOrders")],
-    ["inventory", t("inventory")],
-    ["settings", t("settings")],
   ].filter(
     ([key]) =>
-      owner ||
-      (reception
-        ? ["overview", "queue", "tasks", "refills", "med-stock"].includes(key)
-        : ["overview", "orders", "tasks"].includes(key)),
+      user.role === "owner" ||
+      (user.role === "store"
+        ? ["overview", "orders", "tasks"].includes(key)
+        : key !== "orders"),
   );
-  const tabNav = `<div class="admin-tabs">${tabs.map(([key, label]) => `<button class="${adminTab === key ? "active" : ""}" data-tab="${key}">${label}</button>`).join("")}</div>`;
+}
+const metric = (icoName, value, label) =>
+  `<div class="metric"><span class="metric-icon">${ico(icoName)}</span><div class="metric-value">${value}</div><div class="metric-label">${label}</div></div>`;
+function staff() {
+  if (workError)
+    return workNotice(
+      loc(
+        "โหลดข้อมูลไม่ได้ กรุณาลองอีกครั้ง",
+        "Could not load information. Please try again.",
+      ),
+      true,
+    );
+  if (!me.staff)
+    return workSession === "checking" ? workNotice(t("wait")) : staffLogin();
+  if (page === "/manager" && (me.staff.role !== "owner" || workAccessDenied))
+    return workNotice(
+      loc("หน้านี้สำหรับบัญชีผู้บริหาร", "This page is for manager accounts."),
+    );
+  const user = me.staff;
+  const tabs = workTabs(user);
+  const tabNav = `<nav class="work-tabs" aria-label="${loc("เมนูงาน", "Workspace menu")}">${tabs.map(([key, label]) => `<button class="btn ${adminTab === key ? "primary" : "outline"}" aria-pressed="${adminTab === key}" data-tab="${key}">${label}</button>`).join("")}</nav>`;
+  const role = {
+    owner: loc("ผู้บริหาร", "Manager"),
+    reception: loc("หน้าคลินิก", "Reception"),
+    store: loc("ร้านค้า", "Store"),
+  }[user.role];
+  const header = `<p class="work-user">${esc(user.name)} · ${role}</p>${tabNav}`;
+  if (page === "/manager" && adminTab === "overview")
+    return header + managerOverview();
+  if (page === "/manager" && adminTab === "people")
+    return header + care.staffPermissions();
+  if (!staffData) return header + workNotice(t("wait"));
+  const {
+    metrics,
+    orders: orows,
+    tasks,
+    slots: slotData,
+    products: prd,
+  } = staffData;
+  const owner = user.role === "owner",
+    store = user.role === "store";
   let content = "";
   if (adminTab === "overview" && !store) content = care.staffOverview(user);
   if (adminTab === "med-stock" && user.clinical_access)
@@ -800,8 +919,6 @@ function staff() {
     }</div><div class="side-summary"><h3>${loc("LINE ของฉัน", "My LINE")}</h3>${care.staffLine(user)}<div class="divider"></div><h3>${t("slotSetting")}</h3>${slotData.map((s) => `<div class="day-row"><span>${s.start}–${s.end}</span><strong>${s.used}/${s.capacity}</strong></div><div class="bar"><span style="width:${s.capacity ? Math.min(100, (s.used / s.capacity) * 100) : 0}%"></span></div>`).join("")}</div></div>`;
   if (adminTab === "tasks")
     content = `<div class="card"><h3>${t("tasks")}</h3>${tasks.map((x) => taskRow(x)).join("") || `<div class="empty">${t("noTasks")}</div>`}</div>`;
-  if (adminTab === "queue")
-    content = `<div class="card"><div class="section-header"><div><h3>${t("bookingsToday")}</h3><p>${displayDate(staffData.date)}</p></div><input type="date" id="staffDate" value="${staffData.date}" class="input" style="width:174px"></div><div class="table-wrap"><table><thead><tr><th>${t("bookingRef")}</th><th>${t("name")}</th><th>${t("slot")}</th><th>${t("status")}</th><th>${t("actions")}</th></tr></thead><tbody>${rows.map((b) => `<tr><td><strong>${esc(b.booking_ref)}</strong></td><td>${esc(b.patient_name)}<br><span class="tiny-muted">${esc(care.branchName(b.branch_id))}</span></td><td>${esc(b.slot_key)}</td><td>${statusTag(b.status)}</td><td>${bookingActions(b)}</td></tr>`).join("") || `<tr><td colspan="5">${t("nothingBooked")}</td></tr>`}</tbody></table></div></div>`;
   if (adminTab === "orders")
     content = `<div class="card"><h3>${t("staffOrders")}</h3><div class="table-wrap"><table><thead><tr><th>${t("orderRef")}</th><th>${t("total")}</th><th>${t("status")}</th><th>${t("actions")}</th></tr></thead><tbody>${orows.map((o) => `<tr><td><strong>${esc(o.order_ref)}</strong><br><span class="tiny-muted">${esc(o.delivery_method)}</span></td><td>${fmtTHB(o.amount)}<br><span class="tiny-muted">${o.payment_status === "verified" ? t("paid") : t("unpaid")}</span></td><td>${statusTag(o.status)}</td><td>${orderActions(o, owner)}</td></tr>`).join("") || `<tr><td colspan="4">${t("nothingOrdered")}</td></tr>`}</tbody></table></div></div>`;
   if (adminTab === "inventory")
@@ -810,10 +927,9 @@ function staff() {
     content = `<div class="config-grid"><div class="card"><h3>${t("slotSetting")}</h3><p class="muted">${t("capacity")}</p><form data-form="slots">${slotData.map((s) => `<div class="field"><label>${s.start}–${s.end} (${esc(sLabel(s))})</label><input class="input" name="capacity_${esc(s.key)}" type="number" min="0" max="500" value="${s.capacity}" required></div>`).join("")}<button class="btn primary">${t("saveSettings")}</button></form></div><div class="card"><h3>${t("mode")}</h3><form data-form="mode"><div class="field"><select class="select" name="mode"><option value="auto" ${staffData.booking_mode === "auto" ? "selected" : ""}>${t("auto")}</option><option value="manual" ${staffData.booking_mode === "manual" ? "selected" : ""}>${t("manual")}</option></select></div><button class="btn primary">${t("saveSettings")}</button></form><div class="divider"></div><h3>${t("dateOverride")}</h3><form data-form="override">${care.branchSelect("branch_id", "", "", false, true)}<div class="field"><label>${t("date")}</label><input class="input" type="date" name="date" min="${today()}" value="${staffData.date}" required></div><div class="field"><label>${t("slot")}</label><select class="select" name="key">${slotData.map((s) => `<option value="${esc(s.key)}">${s.start}–${s.end}</option>`).join("")}</select></div><div class="field"><label>${t("capacity")}</label><input class="input" type="number" name="capacity" value="6" min="0" max="500" required></div><button class="btn outline">${t("saveSettings")}</button></form></div></div>`;
   if (adminTab === "settings" && owner) {
     content += care.locationSettings();
-    content += care.staffPermissions();
     content += `<div class="card" style="margin-top:17px"><h3>LINE Staff Group / กลุ่มแจ้งเตือนพนักงาน</h3><p class="muted">Invite the existing LINE OA to the staff group, enable webhooks and choose a verified group seen by the webhook. Do not use a patient group.</p><form data-form="line-group"><div class="field"><select class="select" name="group_id" required><option value="">${t("chooseSlot")}</option>${lineGroups.groups.map((g) => `<option value="${esc(g.group_id)}" ${g.group_id === lineGroups.active ? "selected" : ""}>${esc(g.group_id.slice(0, 16))}…</option>`).join("")}</select></div><button class="btn primary" ${lineGroups.groups.length < 1 ? "disabled" : ""}>${t("saveSettings")}</button></form></div>`;
   }
-  return `${sectionHeader(t("overview"), `${esc(user.name)} · ${{ owner: loc("เจ้าของ", "Owner"), reception: loc("หน้าคลินิก", "Reception"), store: loc("ร้านค้า", "Store") }[user.role] || ""}`, `<button class="btn outline small-btn" data-action="staff-logout">${ico("logout")} ${t("logout")}</button>`)}${tabNav}${content}`;
+  return header + content;
 }
 function taskRow(x) {
   return `<div class="day-row"><div><strong style="display:block;font-size:12px">${esc(x.title)}</strong><span class="tiny-muted">${esc(x.kind)} · ${new Date(x.created_at).toLocaleString(lang === "th" ? "th-TH" : "en-US", { timeZone: "Asia/Bangkok" })}</span>${x.acknowledged_by?.length ? `<div class="tiny-muted" style="color:#287a65">${ico("check")} ${esc(x.acknowledged_by.map((a) => a.display_name + " · " + new Date(a.acknowledged_at).toLocaleString(lang === "th" ? "th-TH" : "en-US", { timeZone: "Asia/Bangkok" })).join(" | "))}</div>` : ""}</div>${x.my_ack ? `<span class="tag">${ico("check")} ${t("ackDone")}</span>` : `<button class="btn soft small-btn" data-ack="${x.id}">${t("ack")}</button>`}</div>`;
@@ -864,6 +980,13 @@ function orderActions(o, owner) {
 }
 function render() {
   document.documentElement.lang = lang;
+  document.documentElement.classList.toggle("large-text", largeText);
+  document.title =
+    page === "/manager"
+      ? loc("ระบบผู้บริหาร · Suwat Clinic", "Manager · Suwat Clinic")
+      : page === "/staff"
+        ? loc("ระบบสตาฟ · Suwat Clinic", "Staff · Suwat Clinic")
+        : "Suwat Clinic";
   if (lineChecking && new URLSearchParams(location.search).has("liff.state")) {
     $root.innerHTML = `<div class="loading-screen"><p class="member-login-status line-startup" role="status">${loc("กำลังเชื่อมบัญชี LINE กรุณารอสักครู่", "Connecting to LINE. Please wait.")}</p></div>`;
     return;
@@ -881,7 +1004,7 @@ function render() {
               ? orderList()
               : page === "/account"
                 ? account()
-                : page === "/staff"
+                : isWorkPage(page)
                   ? staff()
                   : page === "/medications"
                     ? care.medicationsPage()
@@ -890,22 +1013,13 @@ function render() {
 }
 async function refreshForPage() {
   const current = page;
+  if (isWorkPage(current)) return refreshWork(current);
   try {
     const work = [care.refresh(current, staffData?.date || today())];
     if (current === "/orders" && me.customer)
       work.push(
         request("/api/orders").then((r) => {
           orders = r.orders;
-        }),
-      );
-    if (current === "/staff" && me.staff)
-      work.push(
-        request(
-          "/api/staff/overview?date=" +
-            encodeURIComponent(staffData?.date || today()),
-        ).then((r) => {
-          staffData = r;
-          me.staff = r.staff;
         }),
       );
     await Promise.all(work);
@@ -918,6 +1032,59 @@ async function refreshForPage() {
       void care.followLink().catch(care.showError);
     if (current === "/medications")
       void care.followRefillLink().catch(care.showError);
+  }
+}
+
+async function refreshWork(current) {
+  const version = ++workRev;
+  workError = false;
+  workAccessDenied = false;
+  try {
+    if (!me.staff && workSession !== "signed-out") {
+      const { staff: account } = await request("/api/staff/session");
+      if (version !== workRev || page !== current) return;
+      me.staff = account;
+      workSession = account ? "signed-in" : "signed-out";
+    }
+    if (!me.staff || (current === "/manager" && me.staff.role !== "owner"))
+      return;
+    if (!workTabs(me.staff).some(([key]) => key === adminTab))
+      adminTab = "overview";
+    const date = selectedWorkDate();
+    if (current === "/manager" && adminTab === "overview") {
+      const [overview] = await Promise.all([
+        request("/api/manager/overview?date=" + encodeURIComponent(date)),
+        care.refresh(current, date),
+      ]);
+      if (version === workRev && page === current) managerData = overview;
+      return;
+    }
+    if (current === "/manager" && adminTab === "people") {
+      await care.loadPermissions();
+      return;
+    }
+    const [overview, groups] = await Promise.all([
+      request("/api/staff/overview?date=" + encodeURIComponent(date)),
+      current === "/manager" && adminTab === "settings"
+        ? request("/api/staff/line-groups")
+        : null,
+      care.refresh(current, date),
+    ]);
+    if (version !== workRev || page !== current) return;
+    staffData = overview;
+    me.staff = overview.staff;
+    if (groups) lineGroups = groups;
+  } catch (error) {
+    if (version === workRev && page === current) {
+      workAccessDenied = current === "/manager" && error.status === 403;
+      workError = !workAccessDenied && error.status !== 401;
+    }
+  } finally {
+    if (version === workRev && page === current) {
+      render();
+      if (location.hash === "#desk-requests")
+        document.getElementById("desk-requests")?.scrollIntoView();
+    }
   }
 }
 
@@ -1037,13 +1204,14 @@ async function lineLogin() {
 
 async function verifyLineCustomer(idToken) {
   const { customer } = await post("/api/auth/line", { idToken, lang });
-  const session = (await request("/api/me")).customer;
+  const session = (await request("/api/me/customer")).customer;
   if (!customer?.id || session?.id !== customer.id)
     throw lineSignInError("LINE_SESSION_NOT_SAVED");
   return session;
 }
 
 async function linkStaffLine() {
+  if (!config.liffId) config = await request("/api/config");
   const liff = await getLiff();
   if (!liff.isLoggedIn() && !liff.isInClient()) {
     liff.login({
@@ -1082,6 +1250,20 @@ async function ensureLogin() {
 }
 async function handleAction(el) {
   const action = el.dataset.action;
+  if (action === "text-size") {
+    const controls = [...$root.querySelectorAll("[data-action=text-size]")];
+    const controlIndex = controls.indexOf(el);
+    largeText = !largeText;
+    localStorage.setItem("sc_large_text", largeText ? "1" : "0");
+    render();
+    $root.querySelectorAll("[data-action=text-size]")[controlIndex]?.focus();
+    return;
+  }
+  if (action === "work-retry") {
+    if (!me.staff) workSession = "checking";
+    await refreshForPage();
+    return;
+  }
   if (action === "cart") {
     cartOpen = true;
     render();
@@ -1134,10 +1316,7 @@ async function handleAction(el) {
   }
   if (action === "staff-logout") {
     await sending(() => post("/api/staff/logout"));
-    care.reset();
-    me.staff = null;
-    staffData = null;
-    render();
+    clearWorkSession();
     return;
   }
 }
@@ -1193,17 +1372,34 @@ async function submit(form) {
       render();
     }
     if (type === "staff-login") {
-      const r = await post("/api/staff/login", {
-        username: d.username,
-        password: d.password,
-      });
-      me.staff = r.staff;
-      adminTab =
-        location.pathname === "/manager" && r.staff.role === "owner"
-          ? "settings"
-          : "overview";
-      showToast(t("success"));
-      await refreshForPage();
+      loginError = "";
+      try {
+        await post("/api/staff/login", {
+          username: d.username,
+          password: d.password,
+        });
+        workSession = "checking";
+        sessionExpired = false;
+        await refreshForPage();
+        if (!me.staff && !workError) {
+          loginError = loc(
+            "เบราว์เซอร์บันทึกการเข้าสู่ระบบไม่ได้ ลองเปิดเว็บในเบราว์เซอร์หลัก",
+            "Your browser could not save the session. Try your main browser.",
+          );
+          render();
+        }
+      } catch (error) {
+        loginError =
+          error.status === 403
+            ? loc("บัญชีนี้ไม่มีสิทธิ์หลังบ้าน", "This account has no staff access.")
+            : error.status === 400 || error.status === 401
+              ? loc(
+                  "ตรวจอีเมลและรหัสผ่านแล้วลองอีกครั้ง",
+                  "Check your email and password.",
+                )
+              : loc("เชื่อมต่อไม่ได้ กรุณาลองอีกครั้ง", "Could not connect. Try again.");
+        render();
+      }
     }
     if (type === "slots") {
       const data = staffData.slots.map((s) => ({
@@ -1280,23 +1476,24 @@ $root.addEventListener("click", async (e) => {
   if (el.dataset.lang) {
     lang = el.dataset.lang;
     localStorage.setItem("sc_lang", lang);
-    if (me.customer) {
+    if (!isWorkPage(page) && me.customer) {
       post("/api/me/language", { lang }).catch(console.warn);
     }
     render();
     return;
   }
   if (el.dataset.tab) {
+    if (
+      !isWorkPage(page) ||
+      !me.staff ||
+      !workTabs(me.staff).some(([key]) => key === el.dataset.tab)
+    )
+      return;
     adminTab = el.dataset.tab;
+    updateWorkFilter("tab", adminTab);
+    workError = false;
     render();
-    if (adminTab === "settings" && me.staff?.role === "owner") {
-      try {
-        lineGroups = await request("/api/staff/line-groups");
-        render();
-      } catch (e) {
-        showToast(care.errorText(e));
-      }
-    }
+    await refreshForPage();
     return;
   }
   if (el.dataset.add) {
@@ -1431,7 +1628,8 @@ $root.addEventListener("click", async (e) => {
 });
 $root.addEventListener("change", async (e) => {
   if (e.target.id === "staffDate") {
-    if (staffData) staffData.date = e.target.value;
+    if (!e.target.value) return;
+    updateWorkFilter("date", e.target.value);
     await refreshForPage();
   }
 });
@@ -1447,9 +1645,8 @@ $root.addEventListener("submit", async (e) => {
 });
 window.addEventListener("popstate", () => {
   care.closeModal(false);
-  page = /^\/(?:admin|manager)$/.test(location.pathname)
-    ? "/staff"
-    : location.pathname;
+  page = pageFromLocation();
+  adminTab = new URLSearchParams(location.search).get("tab") || "overview";
   refreshForPage();
 });
 const care = createCareUI({
@@ -1463,7 +1660,11 @@ const care = createCareUI({
   displayDate,
   request,
   post,
-  state: () => ({ ...me, config, page, busy }),
+  state: () => ({ ...me, config, page, busy, largeText }),
+  setCustomer: (value) => {
+    me.customer = value;
+  },
+  setWorkFilter: updateWorkFilter,
   render,
   navigate: q,
   sending,
@@ -1477,46 +1678,59 @@ const care = createCareUI({
 });
 
 (async function boot() {
+  if (isWorkPage(page)) {
+    render();
+    await refreshForPage();
+    if (
+      page === "/staff" &&
+      me.staff &&
+      new URLSearchParams(location.search).get("link_line") === "1"
+    ) {
+      try {
+        config = await request("/api/config");
+        await getLiff();
+        updateWorkFilter("link_line", "");
+        await linkStaffLine();
+      } catch (error) {
+        care.showError(error);
+      }
+    }
+    return;
+  }
   const results = await Promise.allSettled([
     request("/api/config"),
     request("/api/products"),
-    request("/api/me"),
+    request("/api/me/customer"),
   ]);
   if (results[0].status === "fulfilled") config = results[0].value;
   if (results[1].status === "fulfilled")
     allProducts = results[1].value.products;
-  if (results[2].status === "fulfilled") me = results[2].value;
-  if (adminTab === "settings" && me.staff && me.staff.role !== "owner")
-    adminTab = "overview";
-  if (config.liffId && page !== "/staff" && !me.customer) {
+  if (results[2].status === "fulfilled")
+    me.customer = results[2].value.customer;
+  if (config.liffId && !me.customer) {
     await resolveLineSignIn();
   } else {
     render();
-    const linkStaff =
-      config.liffId &&
-      page === "/staff" &&
-      me.staff &&
-      new URLSearchParams(location.search).get("link_line") === "1";
-    try {
-      if (linkStaff) {
-        await getLiff();
-        history.replaceState({}, "", "/staff");
-        await linkStaffLine();
-      } else if (config.liffId && me.customer) {
-        void getLiff().catch(() => {});
-      }
-    } catch (error) {
-      care.showError(error);
-    }
+    if (config.liffId && me.customer) void getLiff().catch(() => {});
   }
   await refreshForPage();
 })();
 
 window.addEventListener("pageshow", (event) => {
+  if (event.persisted && isWorkPage(page)) {
+    me.staff = null;
+    staffData = managerData = null;
+    workSession = "checking";
+    workError = false;
+    care.resetWork();
+    render();
+    void refreshForPage();
+    return;
+  }
   if (
     event.persisted &&
     config.liffId &&
-    page !== "/staff" &&
+    !isWorkPage(page) &&
     !me.customer &&
     isReturningFromLine(location.href, sessionStorage)
   ) {

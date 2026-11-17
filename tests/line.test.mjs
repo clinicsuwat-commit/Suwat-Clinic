@@ -278,10 +278,16 @@ test("a verified LINE login resumes the same customer account after logout", asy
 test("LINE cards resolve appointment details for recipients and preserve group privacy", async (t) => {
   const date = "2026-11-28";
   const patientName = "คนไข้ทดสอบ";
+  const phone = "0800000001";
+  const hn = "FIX-A1234";
   const booking = {
     id: 17,
     booking_ref: "APPT-FIXTURE",
     patient_name: patientName,
+    patient_phone: phone,
+    patient_id: 19,
+    customer_id: 39,
+    patient: { hn },
     date,
     appointment_time: "14:25:00",
     status: "confirmed",
@@ -362,20 +368,47 @@ test("LINE cards resolve appointment details for recipients and preserve group p
   ];
   const byRecipient = new Map();
   const states = new Map();
-  let loads = 0;
+  let privateLoads = 0;
+  let groupLoads = 0;
+  let historyLoads = 0;
   t.mock.method(globalThis, "fetch", async (input, options) => {
     const url = new URL(input);
     const route = url.pathname.split("/").at(-1);
     const id = url.searchParams.get("id");
     if (route === "sw_claim_notifications") return Response.json(claims);
     if (route === "sw_bookings") {
-      loads++;
+      const selected = url.searchParams.get("select");
+      if (selected === "id") {
+        historyLoads++;
+        assert.equal(url.searchParams.get("patient_id"), "eq.19");
+        assert.equal(url.searchParams.get("customer_id"), "eq.39");
+        assert.equal(url.searchParams.get("date"), "lt.2026-11-28");
+        assert.equal(
+          url.searchParams.get("status"),
+          "in.(checked_in,completed)",
+        );
+        return Response.json([{ id: 4 }]);
+      }
       assert.equal(id, "eq.17");
-      assert.doesNotMatch(
-        url.searchParams.get("select"),
-        /patient_phone|symptoms|\bhn\b/,
-      );
-      return Response.json([booking]);
+      assert.doesNotMatch(selected, /symptoms|directions/);
+      if (selected.includes("patient_phone")) {
+        privateLoads++;
+        assert.match(
+          selected,
+          /sw_patients!sw_booking_patient_account_fk\(hn\)/,
+        );
+        return Response.json([booking]);
+      }
+      groupLoads++;
+      assert.doesNotMatch(selected, /patient_name|patient_id|\bhn\b/);
+      return Response.json([
+        {
+          ...booking,
+          patient_name: undefined,
+          patient_phone: undefined,
+          patient: undefined,
+        },
+      ]);
     }
     if (route === "sw_reschedule") {
       assert.equal(id, "eq.26");
@@ -387,9 +420,8 @@ test("LINE cards resolve appointment details for recipients and preserve group p
           branch: { name_th: "สาขาอุบล", name_en: "Ubon Ratchathani" },
           slot: { start_time: "09:00:00", end_time: "12:00:00" },
           booking: {
-            id: 17,
-            booking_ref: booking.booking_ref,
-            patient_name: patientName,
+            ...booking,
+            patient: { hn: null },
           },
         },
       ]);
@@ -408,7 +440,9 @@ test("LINE cards resolve appointment details for recipients and preserve group p
     return Response.json({});
   });
   assert.deepEqual(await flush(), { sent: 6, processed: 8 });
-  assert.equal(loads, 1);
+  assert.equal(privateLoads, 1);
+  assert.equal(groupLoads, 1);
+  assert.equal(historyLoads, 1);
   assert.equal(states.get("eq.7"), "failed");
   assert.equal(states.get("eq.8"), "failed");
 
@@ -420,23 +454,92 @@ test("LINE cards resolve appointment details for recipients and preserve group p
     assert.match(rendered, /APPT-FIXTURE/);
     assert.doesNotMatch(rendered, /15:00/);
     assert.ok(
-      notices.every((message) => !message.altText.includes(patientName)),
+      notices.every(
+        (message) =>
+          !message.altText.includes(patientName) &&
+          !message.altText.includes(phone) &&
+          !message.altText.includes(hn),
+      ),
     );
   }
   const customerCards = JSON.stringify(byRecipient.get(customerLineId));
   assert.match(customerCards, /คนไข้ทดสอบ/);
   assert.match(customerCards, /วันนี้มีนัด/);
+  assert.match(customerCards, /คลินิกกระดูกและข้อ หมอสุวัฒน์/);
   assert.match(customerCards, /Your appointment is tomorrow/);
+  assert.match(customerCards, /Dr\. Suwat Orthopedic Clinic/);
+  assert.match(customerCards, /เบอร์โทร/);
+  assert.ok(customerCards.includes(phone));
+  assert.match(customerCards, /•••• 1234/);
+  assert.ok(!customerCards.includes(hn));
   assert.match(customerCards, /\/api\/locations\/yasothon\/map/);
   assert.match(customerCards, /action=attend/);
   const staffCards = JSON.stringify(byRecipient.get(staffLineId));
   assert.match(staffCards, /คนไข้ทดสอบ/);
   assert.match(staffCards, /ลงนัดสำเร็จ/);
-  assert.match(staffCards, /สาขาอุบล/);
+  assert.match(staffCards, /สาขาอุบลราชธานี/);
+  assert.match(staffCards, /ขอนัดหมายตรวจล่วงหน้า/);
+  assert.ok(staffCards.includes(hn));
+  assert.ok(staffCards.includes(phone));
+  const requestedChange = byRecipient
+    .get(staffLineId)
+    .find((notice) => notice.altText.startsWith("มีคำขอเลื่อนนัด"));
+  assert.match(JSON.stringify(requestedChange), /คนไข้เดิม/);
+  assert.match(JSON.stringify(requestedChange), /ไม่ได้ระบุ/);
   assert.match(staffCards, /09:00 – 12:00/);
   assert.doesNotMatch(
     JSON.stringify(byRecipient.get("test-group")),
-    /คนไข้ทดสอบ/,
+    /คนไข้ทดสอบ|0800000001|FIX-A1234/,
+  );
+});
+
+test("the pending visit card uses the clinic headline, Thai date and preferred time", async () => {
+  const { clinicLine } = await import("../lib/clinic-line.mjs");
+  const payload = {
+    clinic_v3: true,
+    lang: "th",
+    status: "pending",
+    date: "2026-11-28",
+    from: "14:51",
+    branch_id: "ubon",
+    branch_th: "สาขาอุบล",
+    patient_name: "ผู้ป่วยตัวอย่าง",
+    patient_phone: "0800000009",
+    booking_id: 1,
+  };
+  const cfg = { baseUrl: "https://clinic.example", liffId: "123456-fixture" };
+  const card = clinicLine(
+    { event_type: "visit_requested", destination: "customer", payload },
+    cfg,
+  );
+  assert.deepEqual(
+    card.contents.header.contents.map((item) => item.text),
+    ["คลินิกกระดูกและข้อ หมอสุวัฒน์", "ขอนัดหมายตรวจล่วงหน้า"],
+  );
+  assert.equal(card.contents.header.background.type, "linearGradient");
+  const json = JSON.stringify(card);
+  assert.match(json, /28 พฤศจิกายน 2569/);
+  assert.match(json, /14:51 น\./);
+  assert.match(json, /วันที่สะดวก/);
+  assert.match(json, /เวลาที่สะดวก/);
+  assert.match(json, /รอยืนยัน/);
+  assert.match(json, /ยังไม่ระบุ/);
+  assert.match(json, /ไม่ได้ระบุ/);
+  const group = clinicLine(
+    {
+      event_type: "staff_booking",
+      destination: "group",
+      payload: {
+        ...payload,
+        returning_patient: true,
+        patient_hn: "FIXTURE-PRIVATE-HN",
+      },
+    },
+    cfg,
+  );
+  assert.doesNotMatch(
+    JSON.stringify(group),
+    /ผู้ป่วยตัวอย่าง|0800000009|FIXTURE-PRIVATE-HN|คนไข้เดิม/,
   );
 });
 

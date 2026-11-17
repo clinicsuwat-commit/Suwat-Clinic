@@ -1,9 +1,9 @@
-Suwat Clinic v3.1.2
+Suwat Clinic v3.2.0
 
 1. เปิด README.md แล้วตรวจเวอร์ชันเดิม
-2. ถ้าใช้ v3.0 ให้รัน sql/04_branches_medication_stock.sql ใน Supabase
+2. ถ้า v3.1–v3.1.3 ใช้งานได้อยู่แล้ว ให้ไปข้อ 3 ถ้าใช้ v3.0 ให้รัน sql/04_branches_medication_stock.sql ใน Supabase
 3. แตก ZIP แล้วคัดลอกไฟล์ทั้งหมดไปที่รากของ GitHub Repository เดิม จากนั้น Push ไปที่ branch สำหรับทดสอบ
-4. เปิด /api/health ตรวจ patch 3.1.2 หลัง Vercel พร้อมใช้งาน
-5. Owner เข้า /manager → สาขาและแผนที่ แล้วบันทึกพิกัดอุบลกับยโสธร
+4. เปิด /api/health ตรวจ patch 3.2.0 หลัง Vercel พร้อมใช้งาน
+5. Owner เข้า /manager → ตั้งค่าคิวและสาขา แล้วบันทึกพิกัดอุบลกับยโสธร
 6. สตาฟที่ได้รับสิทธิ์เข้า /staff → สต็อกยา เพื่อเพิ่มรายการและรับยาตามล็อตของแต่ละสาขา
 7. ใช้บัญชีทดสอบตรวจการเข้า LINE บน Android และ iPhone จริงตาม README.md ก่อนรวมเข้า Production Branch
