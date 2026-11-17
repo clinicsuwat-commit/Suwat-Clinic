@@ -1,187 +1,78 @@
-# Suwat Clinic v2.2 — LINE Login + กรอกเบอร์โทร (ไม่มี SMS OTP)
+# Suwat Clinic v3
 
-**เวอร์ชันนี้เปลี่ยนจากการบังคับ SMS OTP เป็น LINE Login + ให้ลูกค้ากรอกเบอร์โทรเอง** โดยข้อมูลเบอร์โทรเป็น self-reported (ยังไม่ยืนยันความเป็นเจ้าของเบอร์) และ **คำขอจองใหม่ทั้งหมดถูกพักเป็น pending เพื่อพนักงานตรวจสอบ** ไม่มีการส่ง OTP หรือค่า SMS สำหรับฟีเจอร์นี้
+พอร์ทัลคนไข้และแดชบอร์ดสตาฟภาษาไทย–อังกฤษ โทนน้ำเงินแบบ Bento Grid ใช้ Supabase, Vercel และ LINE OA
 
-## อัปเดตจาก v2.1 ที่ Deploy และเชื่อม Supabase อยู่แล้ว (ทำตามลำดับ)
+## อัปเดตโปรเจกต์ v2.2 เดิม
 
-1. ไปที่ **Supabase → SQL Editor → New Query** แล้ววางเนื้อหาจาก `sql/02_line_phone_no_otp.sql` และกด **Run** (ไม่ต้องรัน `01_setup.sql` ซ้ำ และไม่ต้องลบตารางเดิม)
-2. ดาวน์โหลด ZIP v2.2 และแตกไฟล์ แล้วนำ **ไฟล์ภายใน** โฟลเดอร์ `Suwat_Clinic_v2_2_LINE_Phone_No_OTP` ไปทับไฟล์เดิมใน GitHub Repository (ให้ `package.json`, `vercel.json`, `api`, `lib`, `public`, `sql` อยู่ระดับเดียวกัน)
-3. กด **Commit changes** ไปที่ Production branch ที่เชื่อมกับ Vercel แล้วรอ Vercel Deployment ใหม่ขึ้น Ready
-4. Vercel Environment Variables เดิม (`SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `LINE_LOGIN_CHANNEL_ID`, `LINE_LIFF_ID`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET` ฯลฯ) **ใช้ต่อได้** ไม่ต้องกรอกใหม่และไม่ต้องส่งคีย์ในแชต; ค่า Twilio ไม่จำเป็นแล้ว (ลบทิ้งได้หลังยืนยัน Deploy สำเร็จ)
-5. เปิด LIFF ผ่าน LINE บนมือถือ → **บัญชีของฉัน → กรอกเบอร์โทร → บันทึก** → จองคิว/สั่งสินค้า
-6. ตรวจรายการจองใน **Staff Dashboard** ว่าสถานะเป็น `pending` แล้วให้พนักงานกด **Confirm** ก่อนถือว่าเป็นคิวยืนยัน
+1. เปิด Supabase โปรเจกต์ของคลินิก ไปที่ **SQL Editor → New query** วางเนื้อหาใน `sql/03_clinic_v3.sql` แล้วกด **Run** สคริปต์เพิ่มตารางและคอลัมน์และใช้ซ้ำได้ โดยเก็บเลขอ้างอิงนัด คำสั่งซื้อ บัญชี และข้อมูลเดิม
+2. แตก ZIP แล้วคัดลอกไฟล์ภายในไปยังรากของ GitHub Repository เดิม ให้ `api/`, `lib/`, `public/`, `sql/`, `package.json` และ `vercel.json` อยู่ระดับเดียวกัน จากนั้น Commit และ Push ไปที่ Production Branch
+3. ตรวจ Environment Variables ใน Vercel โดยใช้ค่าที่เชื่อมอยู่จากโปรเจกต์เดิม เทียบรายการด้านล่างแล้วเพิ่มค่าที่ขาด จากนั้น Redeploy
+4. เปิด `/api/health` เพื่อตรวจผล `"ok": true` และ `"version": 3` แล้วเข้า `/staff` ด้วยบัญชีเดิม
+5. Owner เปิด **ตั้งค่า → สิทธิ์บันทึกและทบทวนยา → โหลดรายชื่อ** แล้วให้สิทธิ์กับบุคลากรที่คลินิกมอบหมาย ผู้ใช้ใหม่เริ่มด้วยสิทธิ์ด้านยาที่ปิดอยู่
+6. ทดสอบด้วยบัญชี LINE และผู้ป่วยตัวอย่างของคลินิกหนึ่งรายในวันถัดไป เลือก `/account` เพื่อกรอกเบอร์ติดต่อและสร้างบัตร QR แล้วทดสอบลงนัดและตรวจกล่องข้อความของ LINE OA
 
-### การตรวจสอบ SQL หลัง migration
+ถ้าเริ่มโปรเจกต์ใหม่ ให้รันไฟล์ `01_setup.sql`, `02_line_phone_no_otp.sql`, `03_clinic_v3.sql` ตามลำดับ ถ้ายังใช้ v2.1 ให้รัน `02_line_phone_no_otp.sql` ก่อน `03_clinic_v3.sql`
 
-```sql
-SELECT key, value FROM public.sw_settings WHERE key = 'booking_mode';
--- ต้องได้ 'manual'
-```
-
-**สำคัญ:** LINE Login พิสูจน์บัญชี LINE ไม่ใช่เจ้าของหมายเลขโทรศัพท์ จึงไม่มีการแสดงว่าเบอร์โทร verified เมื่อกรอกเอง ระวังการกรอกผิด/แอบอ้าง และให้เจ้าหน้าที่ตรวจสอบเมื่อเหมาะสม ไม่เปิดเผยอาการผู้ป่วยในกลุ่ม LINE และตรวจสิทธิ์/PDPA ก่อนใช้กับข้อมูลจริง
-
-**การเปิดให้บริการเชิงพาณิชย์:** ตรวจแพ็กเกจ Vercel ที่รองรับธุรกิจ (Hobby ไม่ใช่แพ็กเกจสำหรับการใช้งานเชิงพาณิชย์), ระบบสำรองข้อมูล, LINE OA messaging quota และทดสอบครบก่อนเปิดให้ลูกค้าจริง
-
----
-
-# Suwat Clinic v2 — Supabase + Vercel + LINE OA เดิม
-
-**เวอร์ชัน:** v2.1 (No scheduled Cron for Hobby testing) — Source code สำหรับ GitHub/Vercel
-
-โปรเจกต์นี้ย้ายออกจาก SQLite แล้ว โดยใช้ Supabase PostgreSQL ผ่าน Server-side API (Vercel Functions) พร้อม SQL สำหรับจองคิวแบบ Transaction, จองสต็อกแบบ FEFO, ระบบพนักงานรับทราบงาน, ร้านค้าและระบบแจ้งเตือน LINE OA เดิม ทั้ง UI ไทย/อังกฤษยังเหมือนเดิม
-
-> ⚠️ **ข้อจำกัดที่ต้องรู้**: โค้ดผ่าน Automated Tests แต่ยังไม่ได้ Deploy หรือเชื่อมต่อกับฐานข้อมูล Supabase จริงของคุณจากสภาพแวดล้อมนี้ ต้องรัน SQL และตั้งค่า Environment Variables จึงทำงานได้ การจอง/สั่งซื้อต้องมี LINE Login และเบอร์โทรที่ลูกค้ากรอกเอง; การชำระเงินยังใช้ **ตรวจสอบด้วยพนักงาน** ไม่ใช่ Payment Gateway และยังไม่ควรใช้ข้อมูลผู้ป่วยจริงจนกว่าจะผ่านการตรวจสอบความปลอดภัย/PDPA และทดสอบใช้งานจริง
-
-## A. อัปโหลดไฟล์ขึ้น GitHub (ทำทีละขั้น)
-
-1. ดาวน์โหลด ZIP แล้วคลิกขวา **Extract All** เพื่อแตกไฟล์
-2. เปิดโฟลเดอร์ `suwat-clinic-supabase` จะเห็น `api`, `lib`, `public`, `sql`, `package.json`, `vercel.json`, `.env.example` และ `README.md`
-3. ถ้าจะใช้ Repository เดิม ให้ **ลบไฟล์เก่า** ที่ไม่ใช้แล้ว ได้แก่ `server.mjs`, `lib/db.mjs`, `lib/config.mjs`, `data/` (รวมไฟล์ `.sqlite`), และ `start.bat`/`start.sh` ก่อนวางไฟล์ใหม่ อย่าลบไฟล์ใน `public/` ใหม่ที่ให้มานี้
-4. ใช้ **GitHub Desktop** เปิด Repository เดิม แล้วคัดลอก **เนื้อหาภายในโฟลเดอร์ที่แตก ZIP** ไปทับใน Repository เดิม (ไม่ใช่อัปโหลด ZIP ทั้งไฟล์)
-5. ใน GitHub Desktop คลิก **Commit to main** แล้ว **Push origin**
-6. ใช้ Repository แบบ **Private** และตรวจว่าไม่มีไฟล์ `.env`, Secret Key, ข้อมูลผู้ป่วย หรือ SQLite อยู่ในรายการที่จะ Commit
-
-อีกวิธี: สร้าง GitHub Repository ใหม่แบบ Private แล้วเลือก **Add file → Upload files** จากนั้นอัปโหลดไฟล์และโฟลเดอร์ที่แตก ZIP (อัปโหลดเป็นไฟล์ ไม่ใช่ ZIP)
-
-## B. ติดตั้งฐานข้อมูล (สำคัญที่สุด)
-
-1. เปิด https://supabase.com/dashboard และเลือกโปรเจกต์ Suwat Clinic ที่คุณสร้างไว้
-2. เปิด **SQL Editor → New query**
-3. เปิดไฟล์ `sql/01_setup.sql`, คัดลอกทั้งหมดมาวาง และกด **Run**
-4. ใน Table Editor จะเห็น `sw_customers`, `sw_bookings`, `sw_slot_rules`, `sw_products`, `sw_inventory_lots`, `sw_orders`, `sw_staff`, `sw_tasks`, ฯลฯ
-5. ถ้าเคยสร้างตาราง `sc_*` จากไฟล์ MVP v1 ไว้ ตารางเหล่านั้นจะยังอยู่ แต่เวอร์ชัน v2 ใช้ `sw_*` เท่านั้น เพื่อไม่ลบข้อมูลเดิมโดยไม่ตั้งใจ
-6. **อย่าใส่ Supabase Secret Key ใน SQL Editor**, อย่าบันทึกกุญแจลับในไฟล์ ZIP
-
-### สร้างบัญชีเจ้าของคลินิก (Owner)
-
-1. ใน Supabase เปิด **Authentication → Users**
-2. กด **Add user** แล้วสร้างผู้ใช้ด้วย **อีเมลจริงและรหัสผ่านใหม่** (ยืนยันอีเมลตามการตั้งค่าของ Auth)
-3. เปิด **SQL Editor → New query** แล้วเรียกใช้คำสั่งต่อไปนี้โดยแทนอีเมล:
+สำหรับโปรเจกต์ใหม่ ให้สร้างผู้ใช้ใน **Supabase → Authentication → Users** แล้วเพิ่มบัญชี Owner ด้วย SQL นี้ โดยใช้ชื่อและอีเมลของผู้ใช้ที่สร้างแล้ว
 
 ```sql
 insert into public.sw_staff(auth_user_id,email,display_name,role)
-select id,email,'Suwat Clinic Owner','owner'
-from auth.users
-where email = 'YOUR-OWNER-EMAIL@example.com'
-on conflict (auth_user_id) do nothing;
+select id,email,'ชื่อผู้ดูแลคลินิก','owner'
+from auth.users where email='owner@example.com'
+on conflict(auth_user_id) do nothing;
 ```
 
-4. เข้าสู่หน้า `/staff` ของเว็บไซต์ โดยใช้อีเมลและรหัสผ่านที่สร้างใน Supabase Auth (ไม่ได้ใช้ `owner/demo1234` แบบ MVP เก่าอีกแล้ว)
-5. พนักงานเพิ่มภายหลังได้ด้วยการสร้าง Auth User และเพิ่มแถวใน `sw_staff` โดยเปลี่ยน role เป็น `reception` หรือ `store`
+ตั้ง Framework Preset เป็น **Other** และใช้โฟลเดอร์รากของโค้ดเป็น Root Directory ไฟล์ `vercel.json` กำหนด Output Directory เป็น `public`
 
-> Owner ควรเปิด MFA สำหรับบัญชี Supabase Dashboard และไม่ใช้รหัสผ่านเดียวกับบัญชีอื่น
+## ตั้งค่า LINE และตัวเตือน
 
-## C. ตั้งค่า Vercel
-
-1. ไปที่ https://vercel.com/new แล้ว **Import** Repository `suwat-clinic`
-2. **Framework Preset: Other** (ไม่ใช่ Next.js; เวอร์ชันนี้ใช้ Static HTML + Vercel Functions)
-3. **Root Directory:** โฟลเดอร์รากที่มี `package.json`/`vercel.json`
-4. **Output Directory:** `public` (ไฟล์ `vercel.json` ตั้งค่าให้แล้ว)
-5. เข้า **Project → Settings → Environment Variables** เพิ่มค่าต่อไปนี้:
-
-| Name | ใส่ค่าอย่างไร |
+| ตัวแปร | ค่า |
 |---|---|
-| `SUPABASE_URL` | `https://onoivcfoaradmefcdwls.supabase.co` |
-| `SUPABASE_PUBLISHABLE_KEY` | Publishable Key ของโปรเจกต์ Supabase |
-| `SUPABASE_SECRET_KEY` | **Secret Key ตัวใหม่หลัง Rotate** (เก็บแบบ Secret) |
-| `PUBLIC_BASE_URL` | `https://โดเมนโปรเจกต์.vercel.app` |
-| `CRON_SECRET` | สำหรับล็อก endpoint ส่ง LINE ซ้ำ หากยังไม่ใช้ scheduler จะเว้นว่างไว้ชั่วคราวก็ได้ |
-| `LINE_LOGIN_CHANNEL_ID` | Channel ID จาก LINE Login ของ OA เดิม |
-| `LINE_LIFF_ID` | LIFF ID |
-| `LINE_CHANNEL_ACCESS_TOKEN` | Token ของ Messaging API Channel ของ OA เดิม |
-| `LINE_CHANNEL_SECRET` | Channel Secret จาก Messaging API |
-| `LINE_STAFF_GROUP_ID` | ไม่ต้องใส่ก่อนก็ได้ เลือกกลุ่มในแดชบอร์ดภายหลัง |
+| `SUPABASE_URL` | Project URL ของ Supabase |
+| `SUPABASE_PUBLISHABLE_KEY` | Publishable Key สำหรับตรวจบัญชีสตาฟใน Supabase Auth |
+| `SUPABASE_SECRET_KEY` | Secret Key ฝั่งเซิร์ฟเวอร์ |
+| `LINE_LOGIN_CHANNEL_ID`, `LINE_LIFF_ID` | LINE Login Channel ID และ LIFF ID ของระบบ เลือก Scope `openid` ใน LIFF และตั้ง Endpoint URL ไปที่โดเมนรากของคลินิก |
+| `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET` | ช่องทาง Messaging API ของ LINE OA ควรอยู่ใต้ Provider เดียวกับ LINE Login |
+| `LINE_OA_URL` | ลิงก์เพิ่มเพื่อน/เปิดแชต LINE OA สำหรับปุ่มติดต่อคลินิก |
+| `PUBLIC_BASE_URL` | โดเมน HTTPS ของคลินิก สำหรับลิงก์กลับแดชบอร์ดจาก LINE |
+| `LINE_STAFF_GROUP_ID` | ไม่ต้องใส่ถ้าเลือกกลุ่มจากหน้า Owner อยู่แล้ว ถ้ากำหนดค่านี้ ระบบใช้กลุ่มจากตัวแปรนี้ก่อน |
+| `CRON_SECRET` | สตริงสุ่มยาวสำหรับ Vercel Cron ตั้งใน Production แล้ว Redeploy |
 
-6. กด **Deploy** หรือ **Redeploy** หากเคย Deploy ไปแล้ว
-7. เปิดเว็บ `https://โดเมนโปรเจกต์.vercel.app/api/health` หากเชื่อมต่อ Supabase และรัน SQL สำเร็จ จะได้ `{"ok":true,"database":"supabase",...}`
-8. เปิดหน้า `/staff` แล้ว Login ด้วยอีเมล Owner ที่สร้างในขั้น B
+คง Webhook ของระบบนี้ที่ `https://โดเมนคลินิก/api/line/webhook` และกด **Verify** ใน LINE Developers Console ให้คนไข้และสตาฟเพิ่มเพื่อน LINE OA เพื่อรับข้อความแบบ Push สตาฟผูก LINE ส่วนตัวได้หลังเข้าสู่ระบบสตาฟแล้ว
 
-**ข้อจำกัดในการใช้งานจริง:** Vercel Hobby ใช้ได้สำหรับงานส่วนบุคคลที่ไม่ใช่เชิงพาณิชย์เท่านั้น สำหรับคลินิกที่เปิดรับจองหรือขายสินค้า ต้องเลือกแพ็กเกจที่รองรับธุรกิจ เช่น Vercel Pro ก่อนเปิดใช้งานลูกค้าจริง
+`vercel.json` เริ่มด้วย `0 0 * * *` เพื่อเรียกตัวเตือนหนึ่งครั้งต่อวันในช่วงเช้าไทย ตรงกับ 07:00 ICT ตามตารางเวลา รอบจะทำงานกับนัดที่ยืนยันแล้วในวันนี้และวันพรุ่งนี้ เวลาเรียกจริงขึ้นกับแพลน Vercel หากใช้แพลนที่รองรับรอบถี่ สามารถเปลี่ยนเป็น `*/10 * * * *` เพื่อให้ระบบเดินคิวสำรองและส่งซ้ำเมื่อเกิดปัญหาได้ถี่ขึ้น ตัวเตือนเช้าจะเริ่มส่งตั้งแต่ 07:00 ตามเวลาไทย และส่งวันละหนึ่งข้อความต่อการเตือนแต่ละแบบ ดูผลที่ **Vercel → Cron Jobs** และในการ์ดแดชบอร์ดสตาฟ [Vercel Cron Jobs](https://vercel.com/docs/schedules/cron-jobs/usage-and-pricing)
 
-**คำเตือน:** Secret Key เดิมที่เคยส่งในแชตถือว่าเปิดเผยแล้ว ให้ยกเลิกและสร้างคีย์ใหม่ที่ Supabase → Settings → API Keys ก่อน Deploy และอย่าแปะคีย์ใหม่ลงใน GitHub หรือแชต
+Vercel กำหนด Hobby สำหรับงานส่วนตัวที่ไม่ใช่เชิงพาณิชย์ ให้เลือกแพลนที่ครอบคลุมการใช้งานจริงของคลินิก [Vercel Hobby Plan](https://vercel.com/docs/plans/hobby)
 
-## D. เชื่อม LINE OA เดิม (ไม่ต้องสร้าง OA ใหม่)
+## ใช้งานหน้าคลินิก
 
-1. เปิด https://manager.line.biz/ เลือก OA ที่คลินิกใช้อยู่ → Settings → Messaging API
-2. ใช้ **Messaging API Channel เดิม** และตรวจสิทธิ์ Provider ก่อนเปลี่ยนค่าใด ๆ
-3. ใน https://developers.line.biz/console/ สร้าง **LINE Login Channel ภายใต้ Provider เดียวกัน**
-4. สร้าง LIFF App ภายใต้ LINE Login Channel โดยใช้ Endpoint URL `https://โดเมนโปรเจกต์.vercel.app/`
-5. คัดลอก LINE Login Channel ID และ LIFF ID มาใส่ใน Vercel Environment Variables
-6. ตั้ง LINE Messaging API Webhook URL เป็น `https://โดเมนโปรเจกต์.vercel.app/api/line/webhook`, กด Verify และเปิด Use webhook
-7. หาก OA เดิมใช้งาน Webhook กับระบบแชตอื่นอยู่ **อย่าเปลี่ยนทันที** เพราะระบบเดิมอาจหยุดทำงาน; ต้องออกแบบรวม webhook หรือปรึกษาผู้ดูแลระบบเดิม
-8. เปิด Allow bot to join group chats, เชิญ OA เข้ากลุ่มพนักงาน จากนั้นส่งข้อความหนึ่งข้อความในกลุ่มเพื่อให้ระบบตรวจพบ Group ID
-9. Login Owner → `/staff` → Settings → LINE Group เพื่อเลือกกลุ่มแจ้งเตือน
-10. ตั้ง Rich Menu เดิมให้เปิด `https://liff.line.me/LIFF_ID?view=booking` สำหรับจองคิว และ `?view=shop` สำหรับร้านค้า
+| เมื่อสแกน | ระบบแสดงให้ทำต่อ |
+|---|---|
+| บัตรยังไม่มี HN | เทียบชื่อกับทะเบียนของคลินิก กรอก HN เดิม แล้วกดยืนยัน บันทึกเลขศูนย์นำหน้าได้ และ HN เดียวผูกได้หนึ่งโปรไฟล์ |
+| ไม่มีนัดวันนี้ | ลงนัดใหม่ เลือกวัน ช่วงเวลา และเวลาที่แน่นอน |
+| นัดวันนี้รอยืนยัน | ตรวจรายการและยืนยันนัด |
+| นัดวันนี้ยืนยันแล้ว | เทียบผู้มารับบริการกับชื่อและ HN จากนั้นกดเช็กอิน |
+| เช็กอินแล้วหรือพบแพทย์เสร็จ | ผู้มีสิทธิ์ด้านยาสแกนบัตรเพื่อบันทึกจำนวนจริงตามใบสั่งยาและเลขอ้างอิง |
 
-## E. LINE Login + กรอกเบอร์โทร (ไม่มี SMS OTP)
+คนไข้ที่ผูก LINE แล้วมีบัตรแยกสำหรับตัวเองและคนที่ดูแล QR ใช้ได้ 10 นาที สตาฟใช้กล้อง เลือกรูป QR หรือกรอกรหัสสำรองได้ สำหรับนัดจาก v2.2 ระบบจับคู่นัดจากบัญชี LINE และชื่อคนไข้ในนัดก่อนให้ยืนยัน HN กับทะเบียนคลินิก
 
-- ลูกค้าล็อกอินด้วย LINE ก่อน แล้วไปหน้า **บัญชีของฉัน → หมายเลขโทรศัพท์สำหรับการติดต่อ** เพื่อบันทึกเบอร์ 10 หลัก
-- ไม่ต้องตั้งค่า Twilio หรือส่ง OTP ใด ๆ; เบอร์ที่ลูกค้ากรอกถือเป็น **self-reported ไม่ใช่ phone verified**
-- ระบบจะยอมให้ส่งคำขอจองได้หลังมีเบอร์โทร และตั้งคิวเป็น `pending` เพื่อให้พนักงานยืนยัน (แม้เคยตั้ง booking mode เป็น auto)
-- คำสั่งซื้อยังต้องตรวจสอบการชำระเงินแบบ manual review และข้อมูลติดต่ออาจต้องให้พนักงานตรวจสอบ
-- สำหรับระบบที่ติดตั้ง v2.1 แล้ว: **ต้องรัน `sql/02_line_phone_no_otp.sql` ก่อน Deploy v2.2** ไม่งั้น SQL Function เดิมจะยังบังคับ OTP
+รายการซ้ำพิจารณาจาก **คนไข้คนเดียวกันและวันเดียวกัน** ในสถานะรอยืนยัน ยืนยัน หรือเช็กอิน คนในครอบครัวแต่ละโปรไฟล์ตรวจแยกกัน คำขอเลื่อนนัดจะรอผลจากสตาฟและคงนัดเดิมจนอนุมัติ ด้านคิวสำรอง เมื่อมีที่ว่าง ระบบเสนอให้ผู้ที่เข้าคิวก่อนกดรับได้ภายใน 2 ชั่วโมงหรือก่อนช่วงคิวเริ่ม แล้วตรวจความจุอีกครั้งตอนกดรับ
 
-## F. การขายสินค้า
+## บันทึกยาและคำขอชุดเดิม
 
-- Owner ไป `/staff` → Inventory → เพิ่มผลิตภัณฑ์ แล้วเพิ่มล็อต, วันหมดอายุ และจำนวน
-- คำสั่งซื้อจะสำรองสินค้าในฐานข้อมูลทันที (FEFO) และตั้งสถานะ `awaiting_payment`
-- Owner ต้องตรวจสอบยอดเงิน **จริงด้วยตนเอง** ก่อนกด `Verify payment`
-- พนักงาน Store เปลี่ยนเป็น Packing → Shipped → Delivered; ถ้า Shipped ต้องกรอกบริษัทขนส่งและเลขพัสดุ
-- ระบบเตรียมข้อความ LINE แจ้งลูกค้าเมื่อคำสั่งซื้อ/สถานะอัปเดต
-- **ยังไม่มีระบบรับเงิน QR/Payment Gateway อัตโนมัติ** (ต่อยอดภายหลังได้)
+- ผู้มีสิทธิ์ด้านยาบันทึกรายการและจำนวนตามใบสั่งหรือรายการจ่ายจริง ระบุเลขอ้างอิง และกำหนดช่วงวันที่เปิดรับคำขอชุดเดิมตามที่คลินิกอนุญาต
+- คนไข้เปิด **ประวัติการจ่ายยา → ขอสั่งยาชุดเดิม** ตรวจรายการเดิม กรอกชื่อผู้รับ เบอร์โทร ที่อยู่ และรหัสไปรษณีย์ พร้อมทำเครื่องหมายว่ายาชุดนี้หมดแล้ว ค่าส่งเหมาจ่าย **150 บาท**
+- คำขออ้างอิงชุดยาต้นฉบับที่บันทึกไว้โดยตรง รายการ จำนวน และค่าส่งกำหนดจากระบบ คลินิกทบทวนคำขอและบันทึกผลการติดต่อ คนไข้ติดตามผลผ่านหน้าเว็บและข้อความ LINE
+- ข้อความ LINE สำหรับคำขอแสดงเฉพาะการอัปเดตและลิงก์เข้าเว็บ ข้อมูล HN ชุดยา และที่อยู่เปิดได้ในระบบที่ตรวจสิทธิ์แล้ว
+- การให้บริการหรือส่งมอบยาจริงให้ดำเนินการผ่านขั้นตอนวิชาชีพและช่องทางที่ได้รับอนุญาตตามกรณี ระบบนี้รับคำขอให้ทบทวนและติดตามผล [ข้อมูลการให้บริการเภสัชกรรมทางไกลจาก อย.](https://www.fda.moph.go.th/news/telepharmacy/)
 
-## G. ข้อควรทดสอบก่อนเปิดใช้งานจริง
+## ทดลองและดูไฟล์
 
-- Login LINE, บันทึกเบอร์โทรโดยไม่ใช้ OTP, ตรวจให้คิวใหม่เป็น pending
-- 2 คนจองคิวสุดท้ายพร้อมกัน ต้องยืนยันได้เพียง 1 คน
-- หลายคนซื้อสินค้าล็อตสุดท้ายพร้อมกัน ต้องไม่ตัดสต็อกติดลบ
-- ลูกค้าเห็นข้อมูลเฉพาะของตน ส่วนพนักงานเห็นเฉพาะข้อมูลตามสิทธิ์
-- LINE Flex Message ถึงลูกค้าและกลุ่ม LINE พนักงาน โดย **ไม่ส่งอาการผู้ป่วยในกลุ่ม**
-- เวอร์ชัน v2.1 สำหรับทดสอบบน Hobby ปิด **Cron ที่ตั้งเวลา** เพื่อแก้ปัญหา Deploy: ส่ง LINE แบบทันทีเมื่อมีการจอง/ออร์เดอร์ยังทำงานผ่าน `deliver()` หากส่งไม่สำเร็จ **ไม่มีการส่งซ้ำอัตโนมัติ** จนกว่าจะเปิด Scheduler ที่รองรับ แนะนำใช้ Vercel Pro สำหรับระบบคลินิกจริง
-- ตรวจ PDPA, การจัดเก็บข้อมูลสุขภาพ, ความยินยอม, retention, การสำรองข้อมูล, นโยบายคืนสินค้า, และข้อกฎหมายร้านขายผลิตภัณฑ์เสริมอาหาร
-
-## H. รันทดสอบบนเครื่อง
-
-1. ติดตั้ง Node.js 22+
-2. คัดลอก `.env.example` เป็น `.env` แล้วใส่ค่าเชื่อมต่อจริงเฉพาะในไฟล์ `.env` (อย่านำไฟล์นี้ขึ้น GitHub)
-3. เปิด Terminal ในโฟลเดอร์ แล้วรัน:
-
-```bash
-npm test
+```sh
 npm run dev
+npm test
 ```
 
-เปิด http://localhost:3000 ระบบจะใช้ Supabase จริงตามค่า `.env` — **ไม่มี Demo Account** และ **ไม่มี SQLite**
+ใช้ Node.js 22 ขึ้นไป คัดลอก `.env.example` เป็น `.env` เมื่อทดสอบการเชื่อมระบบ แล้วเปิด `http://localhost:3000` กล้องบนมือถือใช้จาก URL แบบ HTTPS เช่นโดเมน Vercel เบราว์เซอร์จะขอสิทธิ์กล้องเมื่อกดเปิดกล้อง
 
-## โครงสร้างไฟล์
-
-```text
-suwat-clinic-supabase/
-├─ public/                    # หน้าเว็บลูกค้าและพนักงาน ไทย/อังกฤษ
-│  ├─ index.html
-│  ├─ app.js
-│  ├─ styles.css
-│  └─ assets/
-├─ api/
-│  ├─ index.mjs              # API สำหรับสมาชิก, จองคิว, ร้านค้า, พนักงาน
-│  ├─ webhook.mjs            # LINE webhook verify HMAC
-│  └─ cron.mjs               # Notification delivery retry
-├─ lib/remote.mjs            # Supabase REST adapter + session + LINE Flex
-├─ sql/01_setup.sql          # Run ใน Supabase SQL Editor
-├─ scripts/setup-richmenu.mjs
-├─ tests/basic.test.mjs
-├─ vercel.json               # Vercel routing (ไม่มี scheduled cron ใน v2.1)
-├─ package.json
-├─ .env.example              # Template เท่านั้น ไม่มี Secret จริง
-└─ README.md
-```
-
-### หมายเหตุด้านเทคนิค
-
-- ตัวเวอร์ชันนี้ใช้ Vercel **Functions + Static HTML** โดยไม่ต้องติดตั้ง Next.js เพิ่ม
-- ภายใน Database ใช้ตาราง `sw_*` ใหม่ ไม่แก้/ลบ `sc_*` ที่เคยสร้างจาก MVP
-- PostgreSQL RPC `sw_book` ใช้ Lock ป้องกันจองคิวเกิน; `sw_checkout` ใช้ Lock และ Transaction สำหรับ FEFO stock
-- Supabase Secret Key ใช้ฝั่ง API เท่านั้น, ฝั่ง Browser ไม่เรียกฐานข้อมูลโดยตรง
-- Staff Login ตรวจสอบรหัสผ่านด้วย **Supabase Auth** และอนุญาตเฉพาะรายชื่อใน `sw_staff`
-- ระบบแจ้ง LINE ใช้ Queue ใน `sw_notifications` และพยายามส่งทันทีเมื่อเกิดรายการ; **v2.1 ปิด schedule ของ Cron** เพื่อผ่านการ Deploy บน Hobby แบบทดสอบเท่านั้น หากส่งล้มเหลวจะค้างใน Queue จนกว่าจะกำหนด Scheduler ที่รองรับ
-- ยังไม่ได้ทำ penetration test, production load test, หรือทดสอบเชื่อม Supabase/LINE จริงในบัญชีผู้ใช้
+ไฟล์ `line-richmenu-th-en.png` มีเมนู 6 ช่องสำหรับ LINE OA ขนาด 2500 × 1686 px นำไปใช้ใน LINE Official Account Manager หรือใช้ `node scripts/setup-richmenu.mjs` เมื่อพร้อมเปลี่ยน Rich Menu ค่าเริ่มต้นของ OA

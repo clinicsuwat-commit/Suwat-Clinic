@@ -29,7 +29,7 @@ test('cron cannot be triggered without private auth',async()=>{
 test('date, phone validation and bilingual UI routes',()=>{
  assert.equal(isDate('2026-11-16'),true);assert.equal(isDate('2026-02-30'),false);
  assert.equal(validPhone('0812345678'),true);assert.equal(validPhone('12345'),false);
- const js=fs.readFileSync(path.resolve('public/app.js'),'utf8');assert.match(js,/requestedView/);assert.match(js,/const dictionary=/);assert.match(js,/lang=localStorage/);
+ const js=fs.readFileSync(path.resolve('public/app.js'),'utf8');assert.match(js,/requestedView/);assert.match(js,/const dictionary\s*=/);assert.match(js,/lang\s*=\s*localStorage/);
 });
 test('Supabase SQL contains transaction routines and RLS',()=>{
  const sql=fs.readFileSync(path.resolve('sql/01_setup.sql'),'utf8');
@@ -48,7 +48,7 @@ test('v2.2 no-SMS phone entry requires LINE-authenticated session',async()=>{
  const otp=await invoke(handler,'POST','/api/otp/start',JSON.stringify({phone:'0812345678'}),{'Content-Type':'application/json'});
  assert.equal(otp.status,410);
  const code=fs.readFileSync(path.resolve('api/index.mjs'),'utf8');
- assert.match(code,/phone_verified:verified/);
+ assert.match(code,/phone_verified:\s*verified/);
  assert.match(code,/Add your phone number in My Account/);
  assert.doesNotMatch(code,/verify\.twilio\.com/);
 });

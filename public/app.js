@@ -1,121 +1,1359 @@
-const $root=document.getElementById('root');
-const icons={heart:'heart',home:'home',calendar:'calendar',shop:'shop',user:'user',package:'package',chart:'chart',check:'check',arrow:'arrow',chevron:'chevron',back:'back',menu:'menu',close:'close',bell:'bell',clock:'clock',shield:'shield',truck:'truck',users:'users',settings:'settings',wallet:'wallet',plus:'plus',minus:'minus',sun:'sun',location:'location',search:'search',globe:'globe',lock:'lock',info:'info',logout:'logout'};
-const ico=(n,extra='')=>`<svg class="icon ${extra}" aria-hidden="true"><use href="/icons.svg#${icons[n]||'heart'}"></use></svg>`;
-const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fmtTHB=n=>new Intl.NumberFormat('th-TH',{style:'currency',currency:'THB',maximumFractionDigits:0}).format(Number(n)||0);
-const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-const later=(days)=>{let d=new Date(today()+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10)};
-let lang=localStorage.getItem('sc_lang')==='en'?'en':'th';
-const requestedView=new URLSearchParams(location.search).get('view');
-let page=(['/','/booking','/shop','/appointments','/orders','/account','/staff','/admin'].includes(location.pathname)?location.pathname:'/').replace('/admin','/staff');
-if(['booking','shop','appointments','orders','account'].includes(requestedView)) page='/'+requestedView;
-let lineGroups={groups:[],active:''};
-let config={demo:false,liffId:''},me={customer:null,staff:null},slots=[],allProducts=[],bookings=[],orders=[],staffData=null,selectedDate=later(1),selectedSlot='',bookingStep=1,bookingSymptoms='',bookingPatient='',bookingResult=null,orderResult=null,cart={},cartOpen=false,adminTab='overview',modal=null,loading=false;
-try{cart=JSON.parse(localStorage.getItem('sc_cart')||'{}')}catch{cart={}};
-const dictionary={
- th:{navMenu:'เมนูหลัก',home:'หน้าหลัก',booking:'จองคิว',shop:'ร้านค้า',appointments:'การนัดหมาย',orders:'คำสั่งซื้อ',account:'บัญชีของฉัน',staff:'สำหรับพนักงาน',help:'ติดต่อคลินิก',care:'ความใส่ใจที่คุณเลือกได้',welcome:'สุขภาพดี เริ่มต้นได้ง่ายกว่าเดิม',heroTitle:'การดูแลสุขภาพที่<br><em>ง่ายและใกล้ตัวคุณ</em>',heroSub:'จองคิวล่วงหน้า เลือกช่วงเวลาที่สะดวก และสั่งซื้อผลิตภัณฑ์ได้ในที่เดียว ผ่าน Suwat Clinic',startBooking:'จองคิวเลย',browse:'เลือกดูสินค้า',todaySlots:'ช่วงเวลาที่เปิดให้จอง',bookAny:'จองคิวได้ทุกวัน',fast:'ใช้งานสะดวก',private:'ข้อมูลปลอดภัย',simple:'บริการที่คุณใช้งานได้ง่าย',quick:'ทุกบริการในที่เดียว',bookingCard:'จองคิวเข้ารับบริการ',bookingDesc:'เลือกวันและเวลา ตรวจสอบคิวว่างแบบเรียลไทม์',shopCard:'ผลิตภัณฑ์สุขภาพ',shopDesc:'ดูรายการสินค้า ราคา และสต็อกคงเหลือ',trackCard:'ติดตามสถานะ',trackDesc:'ตรวจสอบนัดหมายและคำสั่งซื้อของคุณ',how:'การจองทำได้ใน 3 ขั้นตอน',howDesc:'เพียงเลือกเวลา ระบุข้อมูล และยืนยัน',stepA:'เลือกวันและเวลา',stepB:'กรอกข้อมูล',stepC:'ยืนยันการจอง',bookTitle:'นัดหมายกับ Suwat Clinic',bookSub:'เลือกช่วงเวลาที่เหมาะกับคุณ',chooseDate:'วันที่ต้องการเข้ารับบริการ',chooseSlot:'ช่วงเวลาที่สะดวก',available:'ว่าง',full:'เต็มแล้ว',closed:'ปิดให้บริการ',morning:'ช่วงเช้า',afternoon:'ช่วงบ่าย',evening:'ช่วงเย็น',next:'ดำเนินการต่อ',back:'ย้อนกลับ',personalInfo:'ข้อมูลสำหรับการนัดหมาย',patient:'ชื่อผู้เข้ารับบริการ',phone:'เบอร์โทรศัพท์',reason:'อาการเบื้องต้นหรือเหตุผลที่มา',reasonPlaceholder:'ระบุข้อมูลเบื้องต้นเท่าที่ต้องการ (ไม่จำเป็นต้องกรอก)',privacy:'ข้อมูลอาการจะไม่ปรากฏใน LINE กลุ่มพนักงาน และเปิดได้เฉพาะผู้ที่มีสิทธิ์',review:'ตรวจสอบรายละเอียดการจอง',date:'วันที่',slot:'ช่วงเวลา',name:'ชื่อ',status:'สถานะ',note:'หมายเหตุ',confirm:'ยืนยันการจอง',success:'ทำรายการสำเร็จ',booked:'บันทึกการจองเรียบร้อย',ref:'หมายเลขอ้างอิง',viewBookings:'ดูการนัดหมายของฉัน',shopTitle:'Suwat Clinic Store',shopSub:'เลือกดูผลิตภัณฑ์เสริมอาหารและสินค้าภายในคลินิก',sample:'สินค้าตัวอย่าง',stock:'คงเหลือ',outOfStock:'สินค้าหมด',add:'เพิ่มลงตะกร้า',cart:'ตะกร้าสินค้า',emptyCart:'ยังไม่มีสินค้าในตะกร้า',checkout:'ดำเนินการสั่งซื้อ',pickup:'รับที่คลินิก',shipping:'จัดส่งถึงบ้าน',delivery:'วิธีรับสินค้า',address:'ที่อยู่จัดส่ง',addressPlaceholder:'บ้านเลขที่ ถนน ตำบล อำเภอ จังหวัด รหัสไปรษณีย์',total:'ยอดรวม',placeOrder:'ยืนยันคำสั่งซื้อ',orderCreated:'รับคำสั่งซื้อเรียบร้อย',paymentPending:'ยังไม่ยืนยันการชำระเงิน กรุณาติดต่อคลินิกเพื่อชำระเงิน',supplementNotice:'ผลิตภัณฑ์เสริมอาหารไม่ใช่ยา ไม่มีผลในการป้องกันหรือรักษาโรค ตรวจสอบฉลากและคำแนะนำจากผู้เชี่ยวชาญก่อนเลือกซื้อ',myBookings:'การนัดหมายของฉัน',myOrders:'คำสั่งซื้อของฉัน',nothingBooked:'ยังไม่มีรายการนัดหมาย',nothingOrdered:'ยังไม่มีคำสั่งซื้อ',cancel:'ยกเลิกการจอง',track:'เลขพัสดุ',details:'รายละเอียด',myAccount:'ข้อมูลสมาชิก',edit:'แก้ไขข้อมูล',save:'บันทึกข้อมูล',lineMember:'สมาชิกเชื่อมต่อ LINE',demoMember:'สมาชิกทดลอง',phoneVerify:'ยืนยันเบอร์โทร',otp:'รหัส OTP',sendOTP:'ส่งรหัสยืนยัน',verify:'ตรวจสอบรหัส',phoneUnverified:'เบอร์โทรยังไม่ผ่านการยืนยัน',phoneVerified:'ยืนยันเบอร์โทรแล้ว',signIn:'เข้าสู่ระบบสมาชิก',loginDesc:'เข้าสู่ระบบด้วย LINE เพื่อเก็บการจองและติดตามคำสั่งซื้อในบัญชีเดียวกัน',loginLine:'เข้าสู่ระบบด้วย LINE',demoLogin:'ทดลองเป็นลูกค้า',demoNote:'โหมดสาธิต: ไม่ใช่การส่งข้อความ LINE หรือรับเงินของจริง',logout:'ออกจากระบบ',contact:'ติดต่อ Suwat Clinic',contactDesc:'หากมีข้อสงสัยหรือจำเป็นต้องเปลี่ยนนัด กรุณาติดต่อคลินิกทาง LINE OA เดิม',protected:'ระบบนี้จำกัดการเข้าถึงข้อมูลตามบทบาท',staffLogin:'เข้าสู่ระบบพนักงาน',username:'ชื่อผู้ใช้',password:'รหัสผ่าน',dashboard:'ภาพรวม',queue:'รายการจอง',staffOrders:'จัดการคำสั่งซื้อ',inventory:'สต็อกสินค้า',addProduct:'เพิ่มผลิตภัณฑ์',settings:'ตั้งค่าคิว',tasks:'งานที่ต้องรับทราบ',ack:'รับทราบ',ackDone:'รับทราบแล้ว',noTasks:'ไม่มีงานที่รอดำเนินการ',bookingsToday:'คิวประจำวันที่เลือก',capacity:'รับได้ทั้งหมด',remaining:'คิวว่าง',sales:'ยอดชำระที่ยืนยันแล้ว',newTasks:'งานที่ต้องดำเนินการ',bookingRef:'รหัสการจอง',orderRef:'รหัสคำสั่งซื้อ',actions:'จัดการ',paid:'ยืนยันชำระแล้ว',unpaid:'รอตรวจสอบชำระเงิน',markPaid:'ตรวจสอบยอดแล้ว',packing:'กำลังจัดเตรียม',shipped:'จัดส่งแล้ว',delivered:'ส่งถึงแล้ว',checkedIn:'เช็กอิน',completed:'เสร็จสิ้น',approved:'อนุมัติ',noShow:'ไม่มาตามนัด',mark:'บันทึก',slotSetting:'จำนวนคิวต่อช่วงเวลา',dateOverride:'ตั้งค่าคิวเฉพาะวัน',mode:'รูปแบบการยืนยันคิว',auto:'ยืนยันอัตโนมัติ',manual:'รอเจ้าหน้าที่ยืนยัน',saveSettings:'บันทึกการตั้งค่า',restock:'เพิ่มสินค้าเข้าสต็อก',product:'ผลิตภัณฑ์',lot:'เลขล็อต',expiry:'วันหมดอายุ',quantity:'จำนวน',addStock:'เพิ่มสต็อก',allSales:'ยอดสั่งซื้อที่ยืนยันชำระ',overview:'ภาพรวมการทำงาน',intro:'ออกแบบให้ใช้งานง่ายสำหรับทุกวัย',powered:'Suwat Clinic • Simple care, every day',demoLabel:'DEMO / ระบบสาธิต',verifyLine:'LINE OA เดิมพร้อมเชื่อมต่อ',loginToBook:'เข้าสู่ระบบก่อนทำรายการ',reviewData:'กรุณาตรวจสอบข้อมูลก่อนส่ง',wait:'กำลังประมวลผล...',ok:'ตกลง',active:'พร้อมใช้งาน',shipProvider:'บริษัทขนส่ง',trackingNumber:'หมายเลขพัสดุ',notConfigured:'ยังไม่ได้เชื่อมต่อ',connectLine:'เชื่อม LINE OA ภายหลังได้',reserved:'คิวที่จองแล้ว',newOrder:'คำสั่งซื้อใหม่',why:'ออกแบบมาเพื่อคุณ',designed:'ใช้งานง่าย ตัวอักษรชัดเจน รองรับทุกวัย',policy:'ข้อมูลส่วนบุคคลและสุขภาพถูกจัดการตามสิทธิ์การเข้าถึง',summary:'สรุปข้อมูล',signInFirst:'กรุณาเข้าสู่ระบบสมาชิกก่อน',currentLang:'ภาษา',notAvailable:'ยังไม่เปิดใช้งาน',clinicPickup:'รับที่หน้าคลินิก',orderInfo:'คำสั่งซื้อจะอยู่ในสถานะรอตรวจสอบการชำระเงิน',previewOnly:'ข้อมูลตัวอย่างสำหรับทดสอบระบบ'},
- en:{navMenu:'MAIN MENU',home:'Home',booking:'Book a visit',shop:'Shop',appointments:'Appointments',orders:'My orders',account:'My account',staff:'Staff portal',help:'Contact clinic',care:'Care that feels personal',welcome:'Better care, made simpler',heroTitle:'Healthcare that<br><em>feels effortless</em>',heroSub:'Book a visit, choose a convenient time, and browse our clinic products, all in one place.',startBooking:'Book an appointment',browse:'Explore products',todaySlots:'Booking time windows',bookAny:'Easy scheduling',fast:'Simple to use',private:'Private by design',simple:'Your clinic, made simpler',quick:'Everything in one place',bookingCard:'Book an appointment',bookingDesc:'Choose a day and see real-time availability',shopCard:'Clinic products',shopDesc:'Browse products, prices and inventory',trackCard:'Track your care',trackDesc:'View upcoming visits and your orders',how:'Book in 3 simple steps',howDesc:'Choose a slot, fill in your details, and confirm',stepA:'Date & time',stepB:'Your details',stepC:'Confirmation',bookTitle:'Book a visit at Suwat Clinic',bookSub:'Choose the most convenient time for you',chooseDate:'Preferred visit date',chooseSlot:'Available time window',available:'Available',full:'Full',closed:'Closed',morning:'Morning',afternoon:'Afternoon',evening:'Late afternoon',next:'Continue',back:'Go back',personalInfo:'Appointment details',patient:'Patient name',phone:'Phone number',reason:'Initial symptoms or reason for visit',reasonPlaceholder:'Optional. Share only what you feel comfortable sharing.',privacy:'Your symptoms are never posted to the staff LINE group, and can only be accessed by authorized personnel.',review:'Review your appointment',date:'Date',slot:'Time',name:'Name',status:'Status',note:'Notes',confirm:'Confirm booking',success:'Success',booked:'Your request has been saved',ref:'Reference number',viewBookings:'View my appointments',shopTitle:'Suwat Clinic Store',shopSub:'Explore dietary supplements and clinic products',sample:'Sample product',stock:'In stock',outOfStock:'Out of stock',add:'Add to bag',cart:'Your bag',emptyCart:'Your bag is empty',checkout:'Checkout',pickup:'Pick up at clinic',shipping:'Ship to my address',delivery:'Delivery method',address:'Shipping address',addressPlaceholder:'House number, street, district, city and postal code',total:'Total',placeOrder:'Place order',orderCreated:'Order placed',paymentPending:'Payment is not yet verified. Please contact the clinic for payment instructions.',supplementNotice:'Dietary supplements are not medicines and do not prevent or treat diseases. Check product labels and professional advice before buying.',myBookings:'My appointments',myOrders:'My orders',nothingBooked:'No appointments yet',nothingOrdered:'No orders yet',cancel:'Cancel booking',track:'Tracking',details:'Details',myAccount:'Member profile',edit:'Edit profile',save:'Save changes',lineMember:'LINE-connected member',demoMember:'Demo member',phoneVerify:'Verify phone',otp:'OTP code',sendOTP:'Send verification code',verify:'Verify code',phoneUnverified:'Phone number not verified',phoneVerified:'Phone number verified',signIn:'Sign in to Suwat Clinic',loginDesc:'Sign in with LINE to keep your appointments and purchases together.',loginLine:'Continue with LINE',demoLogin:'Try demo account',demoNote:'Demo mode: no real LINE messages or payments are sent.',logout:'Log out',contact:'Contact Suwat Clinic',contactDesc:'Need help or want to change a booking? Contact the clinic through its existing LINE OA.',protected:'Access to health details is limited by staff permissions',staffLogin:'Staff sign in',username:'Username',password:'Password',dashboard:'Dashboard',queue:'Appointments',staffOrders:'Orders',inventory:'Inventory',addProduct:'Add a product',settings:'Booking settings',tasks:'Tasks to acknowledge',ack:'Acknowledge',ackDone:'Acknowledged',noTasks:'No pending tasks',bookingsToday:'Appointments on selected day',capacity:'Daily capacity',remaining:'Open slots',sales:'Verified payments',newTasks:'Pending tasks',bookingRef:'Booking ref',orderRef:'Order ref',actions:'Actions',paid:'Payment verified',unpaid:'Payment pending',markPaid:'Verify payment',packing:'Packing',shipped:'Shipped',delivered:'Delivered',checkedIn:'Checked in',completed:'Completed',approved:'Confirm',noShow:'No-show',mark:'Save',slotSetting:'Capacity per time window',dateOverride:'One-day capacity override',mode:'Booking approval mode',auto:'Confirm automatically',manual:'Require staff approval',saveSettings:'Save settings',restock:'Add inventory lot',product:'Product',lot:'Batch/lot',expiry:'Expiry date',quantity:'Quantity',addStock:'Add stock',allSales:'Verified sales',overview:'Your clinic at a glance',intro:'Designed for every age and ability',powered:'Suwat Clinic • Simple care, every day',demoLabel:'DEMO / PREVIEW',verifyLine:'Existing LINE OA compatible',loginToBook:'Sign in before continuing',reviewData:'Check your details before submitting',wait:'Processing...',ok:'OK',active:'Active',shipProvider:'Carrier',trackingNumber:'Tracking number',notConfigured:'Not connected',connectLine:'Connect your existing LINE OA later',reserved:'Reserved',newOrder:'New order',why:'Designed around you',designed:'Clear labels, readable type and easy steps for everyone',policy:'Personal and health information is access-controlled',summary:'Summary',signInFirst:'Please sign in first',currentLang:'Language',notAvailable:'Not available yet',clinicPickup:'Pick up at clinic',orderInfo:'Orders are marked as awaiting payment verification',previewOnly:'Sample data for testing'}
+import { createCareUI } from "./care.js";
+
+const $root = document.getElementById("root");
+const icons = {
+  heart: "heart",
+  home: "home",
+  calendar: "calendar",
+  shop: "shop",
+  user: "user",
+  package: "package",
+  chart: "chart",
+  check: "check",
+  arrow: "arrow",
+  chevron: "chevron",
+  back: "back",
+  menu: "menu",
+  close: "close",
+  bell: "bell",
+  clock: "clock",
+  shield: "shield",
+  truck: "truck",
+  users: "users",
+  settings: "settings",
+  wallet: "wallet",
+  plus: "plus",
+  minus: "minus",
+  sun: "sun",
+  location: "location",
+  search: "search",
+  globe: "globe",
+  lock: "lock",
+  info: "info",
+  logout: "logout",
+  qr: "qr",
+  scan: "scan",
+  chat: "chat",
+  pill: "pill",
+  photo: "photo",
+  cross: "cross",
 };
-Object.assign(dictionary.th,{
- phoneSaveTitle:'หมายเลขโทรศัพท์สำหรับการติดต่อ',phoneSaveHelp:'กรอกเบอร์โทรที่ติดต่อได้จริง เพื่อให้พนักงานยืนยันนัดหมาย ไม่ต้องรับ SMS OTP',
- phoneSave:'บันทึกเบอร์โทร',phoneMissing:'กรุณาบันทึกเบอร์โทรก่อนจองคิวหรือสั่งซื้อ',
- phoneSelfReported:'เบอร์นี้กรอกด้วยตนเอง ยังไม่ได้ยืนยันว่าเป็นเจ้าของเบอร์',
- phoneSaved:'บันทึกเบอร์โทรเรียบร้อย',phoneNoSms:'ไม่มีค่า SMS OTP · เจ้าหน้าที่อาจโทรตรวจสอบเมื่อจำเป็น',
- phonePreviouslyVerified:'หมายเลขที่เคยยืนยันแล้ว',bookingPendingNote:'คำขอจองคิวรอพนักงานตรวจสอบและยืนยัน'
-});
-Object.assign(dictionary.en,{
- phoneSaveTitle:'Contact phone number',phoneSaveHelp:'Enter a reachable number so staff can confirm your appointment. No SMS OTP is needed.',
- phoneSave:'Save phone',phoneMissing:'Please save a phone number before booking or ordering',
- phoneSelfReported:'This number is self-reported; ownership has not been verified',
- phoneSaved:'Phone number saved',phoneNoSms:'No SMS OTP fees · Staff may call if confirmation is needed',
- phonePreviouslyVerified:'Previously verified number',bookingPendingNote:'Your booking request requires staff review and confirmation'
-});
-const t=k=>dictionary[lang][k]||k;
-function statusText(v){const map={pending:lang==='th'?'รอยืนยัน':'Pending',confirmed:lang==='th'?'ยืนยันแล้ว':'Confirmed',checked_in:t('checkedIn'),completed:t('completed'),cancelled:lang==='th'?'ยกเลิกแล้ว':'Cancelled',no_show:t('noShow'),awaiting_payment:t('unpaid'),packing:t('packing'),shipped:t('shipped'),delivered:t('delivered')};return map[v]||v;}
-function statusTag(v){const bad=['cancelled','no_show'],warn=['pending','awaiting_payment'];return `<span class="tag ${bad.includes(v)?'red':warn.includes(v)?'warn':''}">${esc(statusText(v))}</span>`;}
-const displayDate=s=>{if(!s)return '-';return new Date(s+'T12:00:00+07:00').toLocaleDateString(lang==='th'?'th-TH':'en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'Asia/Bangkok'})};
-const pName=p=>lang==='th'?p.title_th:p.title_en;
-const pDesc=p=>lang==='th'?p.desc_th:p.desc_en;
-const sLabel=s=>lang==='th'?s.label_th:s.label_en;
-function q(url){history.pushState({},'',url);page=url;bookingResult=null;orderResult=null;cartOpen=false;render();refreshForPage();window.scrollTo({top:0,behavior:'smooth'});}
-function showToast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('visible');clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>el.classList.remove('visible'),3200)}
-async function request(url,body,method=body===undefined?'GET':'POST'){const r=await fetch(url,{method,credentials:'same-origin',headers:body===undefined?{}:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||`HTTP ${r.status}`);return data;}
-async function post(url,data={}){return request(url,data,'POST')}
-function cartCount(){return Object.values(cart).reduce((a,b)=>a+Number(b),0)}
-function cartPrice(){return Object.entries(cart).reduce((a,[id,qty])=>a+(allProducts.find(p=>p.id===Number(id))?.price||0)*qty,0)}
-function saveCart(){localStorage.setItem('sc_cart',JSON.stringify(cart));render()}
-function navItem(path,label,iconName){return `<button type="button" class="nav-btn ${page===path?'active':''}" data-nav="${path}">${ico(iconName)}<span>${label}</span></button>`;}
-function shell(content){const staff=page==='/staff';return `<div class="shell"><aside class="sidebar"><a class="brand" href="/" data-nav="/"><span class="brand-logo">${ico('heart')}</span><span>SUWAT CLINIC<small>CARE MADE SIMPLE</small></span></a><div><div class="nav-label">${t('navMenu')}</div><div class="nav-items">${navItem('/',t('home'),'home')}${navItem('/booking',t('booking'),'calendar')}${navItem('/shop',t('shop'),'shop')}${navItem('/appointments',t('appointments'),'clock')}${navItem('/orders',t('orders'),'package')}${navItem('/account',t('account'),'user')}</div></div><div class="side-bottom"><div class="care-card"><span class="round-icon">${ico('shield')}</span><h4>${t('designed')}</h4><p>${t('policy')}</p><button data-nav="/staff" class="btn soft" style="width:100%">${ico('users')} ${t('staff')}</button></div><p class="tiny-muted" style="padding:10px 4px">© ${new Date().getFullYear()} SUWAT CLINIC</p></div></aside><main class="main"><header class="topbar"><div class="mobile-brand"><span class="brand-logo">${ico('heart')}</span> SUWAT CLINIC</div><div class="top-left"><span class="eyebrow">SUWAT CLINIC / ${staff?'WORKSPACE':'CUSTOMER PORTAL'}</span><h2>${staff?t('staff'):(page==='/'?t('home'):t(page.slice(1)))}</h2></div><div class="top-actions">${config.demo?`<span class="demo-mark">${t('demoLabel')}</span>`:''}<div class="lang-switch" aria-label="Language selector"><button data-lang="th" class="${lang==='th'?'active':''}" aria-pressed="${lang==='th'}">ไทย</button><button data-lang="en" class="${lang==='en'?'active':''}" aria-pressed="${lang==='en'}">EN</button></div><button type="button" class="avatar" data-nav="/account" aria-label="Profile">${ico('user')}</button></div></header><div class="main-content">${content}<footer class="footer"><span>© ${new Date().getFullYear()} SUWAT CLINIC</span><span>${t('powered')}</span></footer></div></main></div><nav class="mobile-bar" aria-label="Main navigation">${[['/',t('home'),'home'],['/booking',t('booking'),'calendar'],['/shop',t('shop'),'shop'],['/appointments',t('appointments'),'clock'],['/account',t('account'),'user']].map(([p,label,i])=>`<button class="${page===p?'active':''}" data-nav="${p}" aria-label="${esc(label)}">${ico(i)}<span>${esc(label)}</span></button>`).join('')}</nav>${cartCount()>0&&!cartOpen&&page==='/shop'?`<button class="floating-cart" data-action="cart">${ico('shop')} ${t('cart')} <span class="count">${cartCount()}</span></button>`:''}${modal||''}`;}
-function sectionHeader(title,sub,tail=''){return `<div class="section-header"><div><span class="eyebrow">SUWAT CLINIC</span><h2>${title}</h2>${sub?`<p>${sub}</p>`:''}</div>${tail}</div>`}
-function home(){return `<div class="hero"><div class="hero-content"><div class="hero-kicker">✳ SUWAT CLINIC · WELLNESS & CARE</div><h1>${t('heroTitle')}</h1><p>${t('heroSub')}</p><div class="hero-actions"><button class="btn white" data-nav="/booking">${ico('calendar')} ${t('startBooking')} ${ico('arrow')}</button><button class="btn" style="border:1px solid #d4f0de;color:white;background:#ffffff19" data-nav="/shop">${t('browse')} ${ico('chevron')}</button></div></div><div class="hero-panel" aria-hidden="true"><div class="panel-head"><span>${new Date().toLocaleDateString(lang==='th'?'th-TH':'en-US',{month:'long',year:'numeric',timeZone:'Asia/Bangkok'})}</span>${ico('calendar')}</div><div class="big-day">${new Date().toLocaleDateString('en-US',{day:'2-digit',timeZone:'Asia/Bangkok'})}</div><span style="font-size:11px;color:#e2f3e8">${t('bookAny')}</span><div class="grid-day">${Array.from({length:21},(_,i)=>`<span class="${i===8?'mark':''}">${(i+1)}</span>`).join('')}</div><div class="panel-footer">${ico('check')} ${t('fast')}</div></div></div><div class="stats-strip"><div class="stat-card"><span class="stat-icon">${ico('calendar')}</span><div><strong>3 ${lang==='th'?'ขั้นตอน':'steps'}</strong><span>${t('bookAny')}</span></div></div><div class="stat-card"><span class="stat-icon orange">${ico('sun')}</span><div><strong>TH / EN</strong><span>${t('currentLang')}</span></div></div><div class="stat-card"><span class="stat-icon">${ico('shield')}</span><div><strong>${t('private')}</strong><span>${t('policy')}</span></div></div></div><div class="section">${sectionHeader(t('simple'),t('quick'))}<div class="quick-grid"><button class="quick-card" data-nav="/booking"><span class="round-icon">${ico('calendar')}</span><h3>${t('bookingCard')}</h3><p>${t('bookingDesc')}</p><span class="corner">${ico('arrow')}</span></button><button class="quick-card" data-nav="/shop"><span class="round-icon">${ico('shop')}</span><h3>${t('shopCard')}</h3><p>${t('shopDesc')}</p><span class="corner">${ico('arrow')}</span></button><button class="quick-card" data-nav="/appointments"><span class="round-icon">${ico('package')}</span><h3>${t('trackCard')}</h3><p>${t('trackDesc')}</p><span class="corner">${ico('arrow')}</span></button></div></div><div class="section two-col"><div class="card"><span class="eyebrow">EASY BOOKING</span><h3 style="font-size:21px;margin:8px 0 20px">${t('how')}</h3><div class="booking-summary">${[[1,t('stepA'),'calendar'],[2,t('stepB'),'user'],[3,t('stepC'),'check']].map(([num,text,i])=>`<div style="display:flex;align-items:center;gap:13px"><span class="stat-icon">${ico(i)}</span><strong style="font-size:13px">0${num}. ${text}</strong></div>`).join('')}</div></div><div class="side-summary"><span class="eyebrow">OUR PROMISE</span><h3 style="font-size:19px;line-height:1.6">${t('why')}</h3><p style="color:#658779;font-size:13px">${t('designed')}</p><div class="divider"></div><div class="review-info">${ico('shield')}<span>${t('policy')}</span></div><button class="btn primary" data-nav="/booking" style="width:100%;margin-top:25px">${t('startBooking')} ${ico('arrow')}</button></div></div>`}
-function booking(){if(bookingResult)return confirmation('booking');let slot=slots.find(s=>s.key===selectedSlot);let stepLabels=[t('stepA'),t('stepB'),t('stepC')];return `${sectionHeader(t('bookTitle'),t('bookSub'))}<div class="two-col"><section class="card"><div class="service-steps">${stepLabels.map((x,i)=>`<span class="service-step ${i+1<=bookingStep?'active':''}"><span class="step-no">${i+1}</span>${x}</span>`).join('')}</div>${bookingStep===1?`<form data-form="booking-date"><div class="field"><label for="booking_date">${t('chooseDate')}</label><input id="booking_date" class="input" type="date" name="date" min="${today()}" max="${later(90)}" value="${selectedDate}" required></div><div class="field"><label>${t('chooseSlot')}</label><div class="slot-grid">${slots.map(s=>`<button type="button" class="slot-btn ${s.key===selectedSlot?'selected':''}" data-slot="${esc(s.key)}" ${s.left<1?'disabled':''}><strong>${esc(s.start)}–${esc(s.end)}</strong><small>${s.left?`${t('available')} ${s.left}`:s.closed?t('closed'):t('full')}</small></button>`).join('')||`<div class="skeleton"></div>`}</div></div><div class="form-actions"><span></span><button class="btn primary" ${!slot?'disabled':''}>${t('next')} ${ico('arrow')}</button></div></form>`:bookingStep===2?`<form data-form="booking-details"><div class="field"><label for="patient_name">${t('patient')}</label><input class="input" id="patient_name" name="patient" required minlength="2" maxlength="100" value="${esc(bookingPatient||me.customer?.display_name||'')}" autocomplete="name"></div><div class="field"><label>${t('phone')}</label><input class="input" readonly value="${esc(me.customer?.phone||'—')}" aria-label="Phone"><small class="helper">${me.customer?.phone_verified?t('phonePreviouslyVerified'):t('phoneSelfReported')}</small></div><div class="field"><label for="symptoms">${t('reason')} <span class="muted">(${lang==='th'?'ไม่บังคับ':'optional'})</span></label><textarea class="textarea" id="symptoms" name="symptoms" maxlength="500" placeholder="${esc(t('reasonPlaceholder'))}">${esc(bookingSymptoms)}</textarea></div><div class="review-info">${ico('shield')}<span>${t('privacy')}</span></div><div class="form-actions"><button type="button" class="btn outline" data-action="booking-back">${ico('back')} ${t('back')}</button><button class="btn primary">${t('next')} ${ico('arrow')}</button></div></form>`:`<div class="booking-summary">${[[t('name'),bookingPatient],[t('date'),displayDate(selectedDate)],[t('slot'),slot?`${slot.start}–${slot.end}`:selectedSlot],[t('phone'),me.customer?.phone||'-'],[t('reason'),bookingSymptoms||'—']].map(([label,val])=>`<div class="summary-row"><span>${label}</span><strong>${esc(val)}</strong></div>`).join('')}</div><div class="review-info" style="margin-top:18px">${ico('shield')}<span>${t('reviewData')}</span></div><div class="form-actions"><button class="btn outline" data-action="booking-back">${ico('back')} ${t('back')}</button><button class="btn primary" data-action="booking-submit" ${loading?'disabled':''}>${ico('check')} ${t('confirm')}</button></div>`}</section><aside class="side-summary"><span class="eyebrow">YOUR APPOINTMENT</span><h3>${t('summary')}</h3><div class="day-row"><span>${t('date')}</span><strong>${displayDate(selectedDate)}</strong></div><div class="day-row"><span>${t('slot')}</span><strong>${slot?slot.start+'–'+slot.end:'—'}</strong></div><div class="day-row"><span>${t('available')}</span><span class="tag">${slot?slot.left:'—'} ${lang==='th'?'คิว':'slots'}</span></div><div class="divider"></div><div class="review-info">${ico('info')} <span>${t('policy')}</span></div></aside></div>`}
-function confirmation(type){const b=type==='booking',r=b?bookingResult:orderResult;return `<div class="card confirmation"><div class="big-check">${ico('check')}</div><h2>${b?t('booked'):t('orderCreated')}</h2><p>${b?(r.status==='pending'?t('bookingPendingNote'):t('success')):t('paymentPending')}</p><div class="divider"></div><span class="mini-title">${t('ref')}</span><h2 style="letter-spacing:.04em;color:var(--green)">${esc(b?r.booking_ref:r.order_ref)}</h2><p>${b?displayDate(r.date)+' · '+esc(r.slot_key):fmtTHB(r.amount)}</p>${b?statusTag(r.status):statusTag(r.status)}<div style="margin-top:28px;display:flex;justify-content:center;gap:10px;flex-wrap:wrap"><button class="btn primary" data-nav="${b?'/appointments':'/orders'}">${b?t('viewBookings'):t('myOrders')} ${ico('arrow')}</button><button class="btn outline" data-nav="/">${t('home')}</button></div></div>`;}
-function shop(){if(orderResult)return confirmation('order');return `${sectionHeader(t('shopTitle'),t('shopSub'),`<span class="tag">${allProducts.length} ${t('product')}</span>`)}<div class="product-grid">${allProducts.map(p=>`<article class="product-card"><div class="product-art"><span class="pill">${t('product')}</span><img src="/assets/${esc(p.image)}" alt="${esc(pName(p))}" loading="lazy"></div><div class="product-info"><h3>${esc(pName(p))}</h3><p>${esc(pDesc(p))}</p><span class="tiny-muted">${p.stock>0?`${t('stock')} ${p.stock}`:t('outOfStock')}</span><div class="price-line"><span class="price">${fmtTHB(p.price)}</span><button class="add-btn" ${p.stock<1?'disabled':''} data-add="${p.id}" aria-label="${t('add')} ${esc(pName(p))}">${ico('plus')}</button></div></div></article>`).join('')||`<div class="empty">${ico('shop')}<h3>${t('notAvailable')}</h3></div>`}</div><p class="caption-note" style="margin-top:18px">${ico('info')} ${t('supplementNotice')}</p>${cartOpen?cartModal():''}`}
-function cartModal(){const entries=Object.entries(cart).filter(([id,qty])=>qty>0&&allProducts.some(p=>p.id===Number(id)));return `<div class="modal-backdrop" role="presentation"><section class="modal" role="dialog" aria-modal="true" aria-label="${t('cart')}"><button class="modal-close" data-action="cart-close" aria-label="Close">${ico('close')}</button><h2>${t('cart')} <span class="tag">${cartCount()}</span></h2>${entries.length?`<div>${entries.map(([id,qty])=>{const p=allProducts.find(p=>p.id===Number(id));return `<div class="cart-row"><img src="/assets/${esc(p.image)}" alt=""><div style="flex:1"><strong style="font-size:12px">${esc(pName(p))}</strong><div style="color:var(--green);font-size:12px;font-weight:800">${fmtTHB(p.price)}</div></div><div class="qty"><button data-qty="${id}:-1" aria-label="Subtract">${ico('minus')}</button><strong>${qty}</strong><button data-qty="${id}:1" aria-label="Add" ${qty>=p.stock?'disabled':''}>${ico('plus')}</button></div></div>`}).join('')}</div><div class="summary-row" style="margin-top:18px"><span>${t('total')}</span><strong style="font-size:22px">${fmtTHB(cartPrice())}</strong></div><form data-form="checkout"><div class="field"><label for="delivery">${t('delivery')}</label><select class="select" id="delivery" name="delivery"><option value="pickup">${t('pickup')}</option><option value="shipping">${t('shipping')}</option></select></div><div class="field"><label for="address">${t('address')} (${lang==='th'?'กรณีจัดส่ง':'shipping only'})</label><textarea class="textarea" id="address" name="address" placeholder="${t('addressPlaceholder')}" style="min-height:80px"></textarea></div><p class="caption-note">${t('orderInfo')}</p><button class="btn primary" style="width:100%" ${loading?'disabled':''}>${t('placeOrder')} ${ico('arrow')}</button></form>`:`<div class="empty">${ico('shop')}<h3>${t('emptyCart')}</h3></div>`}</section></div>`}
-function appointments(){return `${sectionHeader(t('myBookings'),t('trackDesc'))}${!me.customer?loginPrompt():bookings.length?bookings.map(b=>`<div class="list-card"><div><span class="eyebrow">${esc(b.booking_ref)}</span><h3>${displayDate(b.date)}</h3><p>${t('slot')}: ${esc(b.slot_key)} · ${esc(b.patient_name)}</p></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${statusTag(b.status)}${['pending','confirmed'].includes(b.status)?`<button class="btn outline small-btn" data-cancel-booking="${b.id}">${t('cancel')}</button>`:''}</div></div>`).join(''):`<div class="card empty">${ico('calendar')}<h3>${t('nothingBooked')}</h3><button class="btn primary" data-nav="/booking">${t('startBooking')}</button></div>`}`}
-function orderList(){return `${sectionHeader(t('myOrders'),t('trackDesc'))}${!me.customer?loginPrompt():orders.length?orders.map(o=>`<div class="list-card"><div><span class="eyebrow">${esc(o.order_ref)}</span><h3>${fmtTHB(o.amount)}</h3><p>${o.items.map(i=>esc(lang==='th'?i.title_th:i.title_en)+' ×'+i.qty).join(' · ')}</p>${o.tracking_no?`<p>${t('track')}: ${esc(o.carrier)} · ${esc(o.tracking_no)}</p>`:''}</div><div>${statusTag(o.status)}<p class="tiny-muted">${o.payment_status==='verified'?t('paid'):t('unpaid')}</p></div></div>`).join(''):`<div class="card empty">${ico('package')}<h3>${t('nothingOrdered')}</h3><button class="btn primary" data-nav="/shop">${t('browse')}</button></div>`}`}
-function loginPrompt(){return `<section class="card login-card"><div class="profile-badge">${ico('user')}</div><h3>${t('signIn')}</h3><p>${t('loginDesc')}</p><div style="display:grid;gap:9px;margin-top:19px">${config.liffId?`<button class="btn primary" data-action="line-login">${t('loginLine')} ${ico('arrow')}</button>`:''}${config.demo?`<button class="btn ${config.liffId?'outline':'primary'}" data-action="demo-login">${t('demoLogin')} ${ico('arrow')}</button>`:''}</div><p class="caption-note">${config.demo?t('demoNote'):t('connectLine')}</p></section>`}
-function account(){if(!me.customer)return `${sectionHeader(t('myAccount'),t('loginDesc'))}${loginPrompt()}`;return `${sectionHeader(t('myAccount'),t('lineMember'))}<div class="card account-card"><div class="profile-badge">${ico('user')}</div><h3>${esc(me.customer.display_name)}</h3><p class="muted" style="font-size:12px">${config.demo?t('demoMember'):t('lineMember')}</p><div class="divider"></div><form data-form="profile"><div class="field"><label>${t('name')}</label><input class="input" name="name" required minlength="2" maxlength="100" value="${esc(me.customer.display_name)}"></div><div class="field"><label>${t('currentLang')}</label><select class="select" name="language"><option value="th" ${lang==='th'?'selected':''}>ภาษาไทย</option><option value="en" ${lang==='en'?'selected':''}>English</option></select></div><button class="btn primary">${t('save')} ${ico('check')}</button></form><div class="divider"></div><h3>${t('phoneSaveTitle')}</h3><p class="muted" style="font-size:13px">${t('phoneSaveHelp')}</p><div class="alert">${ico('info')} ${me.customer.phone_verified?t('phonePreviouslyVerified'):t('phoneSelfReported')}</div><form data-form="phone-save"><div class="field"><label for="member_phone">${t('phone')}</label><input id="member_phone" class="input" name="phone" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="08XXXXXXXX" pattern="0[0-9]{9}" maxlength="10" value="${esc(me.customer.phone||'')}" required></div><button class="btn primary">${t('phoneSave')} ${ico('check')}</button></form><p class="caption-note">${t('phoneNoSms')}</p><div class="divider"></div><button class="btn outline" data-action="logout">${ico('logout')} ${t('logout')}</button></div>`}
-function staffLogin(){return `${sectionHeader(t('staffLogin'),t('protected'))}<div class="card login-card"><div class="profile-badge">${ico('lock')}</div><h3>${t('staffLogin')}</h3><p>${t('protected')}</p><form data-form="staff-login"><div class="field"><label>${lang==='th'?'อีเมลพนักงาน':'Staff email'}</label><input class="input" name="username" autocomplete="username" required placeholder="owner@example.com"></div><div class="field"><label>${t('password')}</label><input class="input" name="password" type="password" autocomplete="current-password" required></div><button class="btn primary" style="width:100%">${t('signIn')} ${ico('arrow')}</button></form>${config.demo?`<p class="caption-note" style="margin-top:12px">Demo only: owner / demo1234 · reception / staff1234. These accounts do not exist in live mode.</p>`:''}</div>`}
-const metric=(icoName,value,label)=>`<div class="metric"><span class="metric-icon">${ico(icoName)}</span><div class="metric-value">${value}</div><div class="metric-label">${label}</div></div>`;
-function staff(){if(!me.staff)return staffLogin();if(!staffData)return `<div class="skeleton"></div>`;const {metrics,bookings:rows,orders:orows,tasks,slots:slotData,products:prd,staff:user}=staffData;const owner=user.role==='owner',reception=user.role==='reception',store=user.role==='store';const tabs=[['overview',t('dashboard')],['queue',t('queue')],['tasks',t('tasks')],['orders',t('staffOrders')],['inventory',t('inventory')],['settings',t('settings')]].filter(([key])=>owner||(reception?['overview','queue','tasks'].includes(key):['overview','orders','tasks'].includes(key)));
- const tabNav=`<div class="admin-tabs">${tabs.map(([key,label])=>`<button class="${adminTab===key?'active':''}" data-tab="${key}">${label}</button>`).join('')}</div>`;
- let content='';
- if(adminTab==='overview')content=`<div class="metric-grid">${metric('calendar',metrics.bookings_today,t('bookingsToday'))}${metric('clock',metrics.remaining_today,t('remaining'))}${metric('wallet',fmtTHB(metrics.order_sales),t('sales'))}${metric('bell',metrics.pending_tasks,t('newTasks'))}</div><div class="two-col"><div class="card"><h3>${t('tasks')}</h3>${tasks.slice(0,6).map(x=>taskRow(x)).join('')||`<div class="empty">${t('noTasks')}</div>`}</div><div class="side-summary"><h3>${t('slotSetting')}</h3>${slotData.map(s=>`<div class="day-row"><span>${s.start}–${s.end}</span><strong>${s.used}/${s.capacity}</strong></div><div class="bar"><span style="width:${s.capacity?Math.min(100,s.used/s.capacity*100):0}%"></span></div>`).join('')}</div></div>`;
- if(adminTab==='tasks')content=`<div class="card"><h3>${t('tasks')}</h3>${tasks.map(x=>taskRow(x)).join('')||`<div class="empty">${t('noTasks')}</div>`}</div>`;
- if(adminTab==='queue')content=`<div class="card"><div class="section-header"><div><h3>${t('bookingsToday')}</h3><p>${displayDate(staffData.date)}</p></div><input type="date" id="staffDate" value="${staffData.date}" class="input" style="width:174px"></div><div class="table-wrap"><table><thead><tr><th>${t('bookingRef')}</th><th>${t('name')}</th><th>${t('slot')}</th><th>${t('status')}</th><th>${t('actions')}</th></tr></thead><tbody>${rows.map(b=>`<tr><td><strong>${esc(b.booking_ref)}</strong></td><td>${esc(b.patient_name)}</td><td>${esc(b.slot_key)}</td><td>${statusTag(b.status)}</td><td>${bookingActions(b)}</td></tr>`).join('')||`<tr><td colspan="5">${t('nothingBooked')}</td></tr>`}</tbody></table></div></div>`;
- if(adminTab==='orders')content=`<div class="card"><h3>${t('staffOrders')}</h3><div class="table-wrap"><table><thead><tr><th>${t('orderRef')}</th><th>${t('total')}</th><th>${t('status')}</th><th>${t('actions')}</th></tr></thead><tbody>${orows.map(o=>`<tr><td><strong>${esc(o.order_ref)}</strong><br><span class="tiny-muted">${esc(o.delivery_method)}</span></td><td>${fmtTHB(o.amount)}<br><span class="tiny-muted">${o.payment_status==='verified'?t('paid'):t('unpaid')}</span></td><td>${statusTag(o.status)}</td><td>${orderActions(o,owner)}</td></tr>`).join('')||`<tr><td colspan="4">${t('nothingOrdered')}</td></tr>`}</tbody></table></div></div>`;
- if(adminTab==='inventory')content=`<div class="card"><h3>${t('inventory')}</h3><div class="table-wrap"><table><thead><tr><th>SKU</th><th>${t('product')}</th><th>${t('stock')}</th><th>${t('total')}</th></tr></thead><tbody>${prd.map(p=>`<tr><td>${esc(p.sku)}</td><td>${esc(pName(p))}</td><td><span class="tag ${p.stock<5?'warn':''}">${p.stock}</span></td><td>${fmtTHB(p.price)}</td></tr>`).join('')}</tbody></table></div><div class="divider"></div><h3>${t('restock')}</h3><form data-form="restock" class="stock-form"><div class="field"><label>${t('product')}</label><select class="select" name="product_id">${prd.map(p=>`<option value="${p.id}">${esc(pName(p))}</option>`).join('')}</select></div><div class="field"><label>${t('lot')}</label><input class="input" name="lot_no" required placeholder="LOT-001"></div><div class="field"><label>${t('quantity')}</label><input class="input" name="qty" type="number" min="1" max="100000" value="10" required></div><div class="field"><label>${t('expiry')}</label><input class="input" name="expiry_date" type="date" min="${today()}" value="${later(365)}" required></div><button class="btn primary">${t('addStock')}</button></form><div class="divider"></div><h3>${t('addProduct')}</h3><form data-form="product-create" class="stock-form"><div class="field"><label>SKU</label><input class="input" name="sku" required maxlength="32"></div><div class="field"><label>ชื่อภาษาไทย</label><input class="input" name="title_th" required></div><div class="field"><label>English name</label><input class="input" name="title_en" required></div><div class="field"><label>ราคา (฿)</label><input class="input" type="number" name="price" min="0" required></div><button class="btn primary">${t('addProduct')}</button></form></div>`;
- if(adminTab==='settings')content=`<div class="config-grid"><div class="card"><h3>${t('slotSetting')}</h3><p class="muted">${t('capacity')}</p><form data-form="slots">${slotData.map(s=>`<div class="field"><label>${s.start}–${s.end} (${esc(sLabel(s))})</label><input class="input" name="capacity_${esc(s.key)}" type="number" min="0" max="500" value="${s.capacity}" required></div>`).join('')}<button class="btn primary">${t('saveSettings')}</button></form></div><div class="card"><h3>${t('mode')}</h3><form data-form="mode"><div class="field"><select class="select" name="mode"><option value="auto" ${staffData.booking_mode==='auto'?'selected':''}>${t('auto')}</option><option value="manual" ${staffData.booking_mode==='manual'?'selected':''}>${t('manual')}</option></select></div><button class="btn primary">${t('saveSettings')}</button></form><div class="divider"></div><h3>${t('dateOverride')}</h3><form data-form="override"><div class="field"><label>${t('date')}</label><input class="input" type="date" name="date" min="${today()}" value="${staffData.date}" required></div><div class="field"><label>${t('slot')}</label><select class="select" name="key">${slotData.map(s=>`<option value="${esc(s.key)}">${s.start}–${s.end}</option>`).join('')}</select></div><div class="field"><label>${t('capacity')}</label><input class="input" type="number" name="capacity" value="6" min="0" max="500" required></div><button class="btn outline">${t('saveSettings')}</button></form></div></div>`;
- if(adminTab==='settings'&&owner){content+=`<div class="card" style="margin-top:17px"><h3>LINE Staff Group / กลุ่มแจ้งเตือนพนักงาน</h3><p class="muted">Invite the existing LINE OA to the staff group, enable webhooks and choose a verified group seen by the webhook. Do not use a patient group.</p><form data-form="line-group"><div class="field"><select class="select" name="group_id" required><option value="">${t('chooseSlot')}</option>${lineGroups.groups.map(g=>`<option value="${esc(g.group_id)}" ${g.group_id===lineGroups.active?'selected':''}>${esc(g.group_id.slice(0,16))}…</option>`).join('')}</select></div><button class="btn primary" ${lineGroups.groups.length<1?'disabled':''}>${t('saveSettings')}</button></form></div>`;}
- return `${sectionHeader(t('overview'),`${esc(user.name)} · ${esc(user.role)}`,`<button class="btn outline small-btn" data-action="staff-logout">${ico('logout')} ${t('logout')}</button>`)}${tabNav}${content}`;
+const ico = (n, extra = "") =>
+  `<svg class="icon ${extra}" aria-hidden="true"><use href="/icons.svg#${icons[n] || "heart"}"></use></svg>`;
+const esc = (v) =>
+  String(v ?? "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ],
+  );
+const fmtTHB = (n) =>
+  new Intl.NumberFormat("th-TH", {
+    style: "currency",
+    currency: "THB",
+    maximumFractionDigits: 0,
+  }).format(Number(n) || 0);
+const today = () =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+const later = (days) => {
+  let d = new Date(today() + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+let lang = localStorage.getItem("sc_lang") === "en" ? "en" : "th";
+const requestedView = new URLSearchParams(location.search).get("view");
+let page = (
+  [
+    "/",
+    "/booking",
+    "/shop",
+    "/appointments",
+    "/orders",
+    "/account",
+    "/medications",
+    "/staff",
+    "/admin",
+  ].includes(location.pathname)
+    ? location.pathname
+    : "/"
+).replace("/admin", "/staff");
+if (
+  [
+    "booking",
+    "shop",
+    "appointments",
+    "orders",
+    "account",
+    "medications",
+    "staff",
+  ].includes(requestedView)
+)
+  page = "/" + requestedView;
+let lineGroups = { groups: [], active: "" };
+let config = { demo: false, liffId: "" },
+  me = { customer: null, staff: null },
+  orders = [],
+  staffData = null,
+  orderResult = null,
+  cart = {},
+  cartOpen = false,
+  adminTab = "overview",
+  loading = false;
+try {
+  cart = JSON.parse(localStorage.getItem("sc_cart") || "{}");
+} catch {
+  cart = {};
 }
-function taskRow(x){return `<div class="day-row"><div><strong style="display:block;font-size:12px">${esc(x.title)}</strong><span class="tiny-muted">${esc(x.kind)} · ${new Date(x.created_at).toLocaleString(lang==='th'?'th-TH':'en-US',{timeZone:'Asia/Bangkok'})}</span>${x.acknowledged_by?.length?`<div class="tiny-muted" style="color:#287a65">${ico('check')} ${esc(x.acknowledged_by.map(a=>a.display_name+' · '+new Date(a.acknowledged_at).toLocaleString(lang==='th'?'th-TH':'en-US',{timeZone:'Asia/Bangkok'})).join(' | '))}</div>`:''}</div>${x.my_ack?`<span class="tag">${ico('check')} ${t('ackDone')}</span>`:`<button class="btn soft small-btn" data-ack="${x.id}">${t('ack')}</button>`}</div>`}
-function bookingActions(b){const map={pending:[['confirmed',t('approved')],['cancelled',t('cancel')]],confirmed:[['checked_in',t('checkedIn')],['no_show',t('noShow')],['cancelled',t('cancel')]],checked_in:[['completed',t('completed')]]};return `<div class="btn-group">${(map[b.status]||[]).map(([status,label])=>`<button class="btn outline small-btn" data-book-status="${b.id}:${status}">${label}</button>`).join('')||'—'}</div>`}
-function orderActions(o,owner){const map={awaiting_payment:[['cancelled',t('cancel')]],confirmed:[['packing',t('packing')],['cancelled',t('cancel')]],packing:[['shipped',t('shipped')],['cancelled',t('cancel')]],shipped:[['delivered',t('delivered')]]};return `<div class="btn-group"><button class="btn outline small-btn" data-fulfillment="${o.id}">${t('details')}</button>${o.status==='awaiting_payment'&&owner?`<button class="btn soft small-btn" data-payment="${o.id}">${t('markPaid')}</button>`:''}${(map[o.status]||[]).map(([status,label])=>`<button class="btn outline small-btn" data-order-status="${o.id}:${status}">${label}</button>`).join('')}</div>`}
-function render(){document.documentElement.lang=lang;$root.innerHTML=shell(page==='/'?home():page==='/booking'?booking():page==='/shop'?shop():page==='/appointments'?appointments():page==='/orders'?orderList():page==='/account'?account():page==='/staff'?staff():home());}
-async function refreshForPage(){try{if(page==='/booking'){const r=await request('/api/slots?date='+encodeURIComponent(selectedDate));slots=r.slots;if(!slots.some(x=>x.key===selectedSlot&&x.left>0))selectedSlot='';}if(page==='/appointments'&&me.customer){bookings=(await request('/api/bookings')).bookings;}if(page==='/orders'&&me.customer){orders=(await request('/api/orders')).orders;}if(page==='/staff'&&me.staff){staffData=await request('/api/staff/overview?date='+(staffData?.date||today()));}}catch(e){showToast(e.message)}render();}
-async function lineLogin(){if(!config.liffId||!window.liff){showToast(t('notConfigured'));return;}try{await window.liff.init({liffId:config.liffId});if(!window.liff.isLoggedIn()){window.liff.login({redirectUri:location.href});return;}const token=window.liff.getIDToken();if(!token){showToast(t('notConfigured'));return;}const r=await post('/api/auth/line',{idToken:token});me.customer=r.customer;showToast(t('success'));refreshForPage();}catch(e){showToast(e.message)}}
-async function ensureLogin(){if(me.customer)return true;if(config.demo){showToast(t('signInFirst'));q('/account');return false;}if(config.liffId){await lineLogin();return !!me.customer;}showToast(t('notConfigured'));return false;}
-async function handleAction(el){const action=el.dataset.action;
- if(action==='booking-back'){bookingStep=Math.max(1,bookingStep-1);render();return;}
- if(action==='booking-submit'){if(!(await ensureLogin()))return;try{loading=true;render();const r=await post('/api/bookings',{date:selectedDate,slot_key:selectedSlot,patient_name:bookingPatient,symptoms:bookingSymptoms,request_id:crypto.randomUUID()});bookingResult=r.booking;showToast(t('booked'));}catch(e){showToast(e.message);await refreshForPage()}finally{loading=false;render()}return;}
- if(action==='cart'){cartOpen=true;render();return;}if(action==='cart-close'){cartOpen=false;render();return;}
- if(action==='demo-login'){try{const r=await post('/api/auth/demo',{name:'Demo Customer'});me.customer=r.customer;showToast(t('success'));refreshForPage();}catch(e){showToast(e.message)}return;}
- if(action==='line-login'){await lineLogin();return;}
- if(action==='logout'){await post('/api/auth/logout');me.customer=null;bookings=[];orders=[];render();return;}
- if(action==='staff-logout'){await post('/api/staff/logout');me.staff=null;staffData=null;render();return;}
-}
-async function submit(form){const type=form.dataset.form,d=Object.fromEntries(new FormData(form).entries());try{
- if(type==='booking-date'){if(!selectedSlot)throw new Error(t('chooseSlot'));if(!(await ensureLogin()))return;if(!me.customer.phone&&!config.demo){q('/account');showToast(t('phoneMissing'));return;}bookingStep=2;render();}
- if(type==='booking-details'){bookingPatient=d.patient.trim();bookingSymptoms=d.symptoms.trim();if(bookingPatient.length<2)throw new Error(t('patient'));bookingStep=3;render();}
- if(type==='profile'){const r=await post('/api/me/profile',{display_name:d.name,preferred_lang:d.language});me.customer=r.customer;lang=d.language;localStorage.setItem('sc_lang',lang);showToast(t('success'));render();}
- if(type==='phone-save'){const r=await post('/api/me/phone',{phone:d.phone.trim()});me.customer=r.customer;showToast(t('phoneSaved'));render();}
- if(type==='checkout'){if(!(await ensureLogin())){cartOpen=false;render();return;}if(!me.customer.phone&&!config.demo){cartOpen=false;q('/account');showToast(t('phoneMissing'));return;}const items=Object.entries(cart).filter(([,qty])=>qty>0).map(([id,qty])=>({id:Number(id),qty}));if(!items.length)throw new Error(t('emptyCart'));loading=true;const r=await post('/api/orders',{items,delivery_method:d.delivery,shipping_address:d.address,request_id:crypto.randomUUID()});orderResult=r.order;cart={};localStorage.removeItem('sc_cart');cartOpen=false;showToast(t('orderCreated'));render();}
- if(type==='staff-login'){const r=await post('/api/staff/login',{username:d.username,password:d.password});me.staff=r.staff;adminTab='overview';showToast(t('success'));await refreshForPage();}
- if(type==='slots'){const data=staffData.slots.map(s=>({key:s.key,capacity:Number(d['capacity_'+s.key])}));await post('/api/staff/slots',{slots:data});showToast(t('success'));await refreshForPage();}
- if(type==='mode'){await post('/api/staff/booking-mode',{mode:d.mode});showToast(t('success'));await refreshForPage();}
- if(type==='override'){await post('/api/staff/override',{date:d.date,key:d.key,capacity:Number(d.capacity),closed:Number(d.capacity)===0});showToast(t('success'));staffData.date=d.date;await refreshForPage();}
- if(type==='line-group'){await post('/api/staff/line-group',{group_id:d.group_id});showToast(t('success'));lineGroups=await request('/api/staff/line-groups');render();}
- if(type==='product-create'){await post('/api/staff/products',{sku:d.sku,title_th:d.title_th,title_en:d.title_en,price:Number(d.price)});showToast(t('success'));allProducts=(await request('/api/products')).products;await refreshForPage();}
- if(type==='restock'){await post('/api/staff/restock',{product_id:Number(d.product_id),lot_no:d.lot_no,qty:Number(d.qty),expiry_date:d.expiry_date});showToast(t('success'));allProducts=(await request('/api/products')).products;await refreshForPage();}
- }catch(e){showToast(e.message)}finally{loading=false}}
-$root.addEventListener('click',async e=>{const el=e.target.closest('button,[data-nav],a[data-nav]');if(!el)return;
- if(el.dataset.nav){e.preventDefault();q(el.dataset.nav);return;}
- if(el.dataset.lang){lang=el.dataset.lang;localStorage.setItem('sc_lang',lang);if(me.customer){post('/api/me/language',{lang}).catch(console.warn);}render();return;}
- if(el.dataset.slot){selectedSlot=el.dataset.slot;render();return;}
- if(el.dataset.tab){adminTab=el.dataset.tab;render();if(adminTab==='settings'&&me.staff?.role==='owner'){try{lineGroups=await request('/api/staff/line-groups');render();}catch(e){showToast(e.message)}}return;}
- if(el.dataset.add){const p=allProducts.find(x=>x.id===Number(el.dataset.add));if(!p)return;if((cart[p.id]||0)>=p.stock){showToast(t('outOfStock'));return;}cart[p.id]=(cart[p.id]||0)+1;saveCart();showToast(t('add'));return;}
- if(el.dataset.qty){const [id,delta]=el.dataset.qty.split(':');const p=allProducts.find(x=>x.id===Number(id));cart[id]=Math.max(0,Math.min(p?.stock||0,(cart[id]||0)+Number(delta)));if(!cart[id])delete cart[id];saveCart();return;}
- if(el.dataset.cancelBooking){if(!confirm(t('cancel')+'?'))return;try{await post('/api/bookings/'+el.dataset.cancelBooking+'/cancel');showToast(t('success'));await refreshForPage();}catch(e){showToast(e.message)}return;}
- if(el.dataset.ack){try{await post('/api/staff/tasks/'+el.dataset.ack+'/ack');showToast(t('ackDone'));await refreshForPage();}catch(e){showToast(e.message)}return;}
- if(el.dataset.bookStatus){const [id,status]=el.dataset.bookStatus.split(':');if(!confirm(t('confirm')+'?'))return;try{await post('/api/staff/bookings/'+id+'/status',{status});showToast(t('success'));await refreshForPage();}catch(e){showToast(e.message)}return;}
- if(el.dataset.fulfillment){try{const r=await request('/api/staff/orders/'+el.dataset.fulfillment+'/fulfillment');alert(r.order.order_ref+'\n'+(r.order.delivery_method==='shipping'?r.order.shipping_address:t('clinicPickup')));}catch(e){showToast(e.message)}return;}
- if(el.dataset.payment){if(!confirm(t('markPaid')+'?'))return;try{await post('/api/staff/orders/'+el.dataset.payment+'/verify-payment');showToast(t('success'));await refreshForPage();}catch(e){showToast(e.message)}return;}
- if(el.dataset.orderStatus){const [id,status]=el.dataset.orderStatus.split(':');let data={status};if(status==='shipped'){const carrier=prompt(t('shipProvider'));if(!carrier)return;const tracking_no=prompt(t('trackingNumber'));if(!tracking_no)return;data={status,carrier,tracking_no};}if(!confirm(t('confirm')+'?'))return;try{await post('/api/staff/orders/'+id+'/status',data);showToast(t('success'));await refreshForPage();}catch(e){showToast(e.message)}return;}
- if(el.dataset.action){await handleAction(el);return;}
+const dictionary = {
+  th: {
+    navMenu: "เมนูหลัก",
+    home: "หน้าหลัก",
+    booking: "จองคิว",
+    shop: "ร้านค้า",
+    appointments: "การนัดหมาย",
+    orders: "คำสั่งซื้อ",
+    account: "บัญชีของฉัน",
+    staff: "สำหรับพนักงาน",
+    help: "ติดต่อคลินิก",
+    care: "ความใส่ใจที่คุณเลือกได้",
+    welcome: "สุขภาพดี เริ่มต้นได้ง่ายกว่าเดิม",
+    heroTitle: "การดูแลสุขภาพที่<br><em>ง่ายและใกล้ตัวคุณ</em>",
+    heroSub:
+      "จองคิวล่วงหน้า เลือกช่วงเวลาที่สะดวก และสั่งซื้อผลิตภัณฑ์ได้ในที่เดียว ผ่าน Suwat Clinic",
+    startBooking: "จองคิวเลย",
+    browse: "เลือกดูสินค้า",
+    todaySlots: "ช่วงเวลาที่เปิดให้จอง",
+    bookAny: "จองคิวได้ทุกวัน",
+    fast: "ใช้งานสะดวก",
+    private: "ข้อมูลปลอดภัย",
+    simple: "บริการที่คุณใช้งานได้ง่าย",
+    quick: "ทุกบริการในที่เดียว",
+    bookingCard: "จองคิวเข้ารับบริการ",
+    bookingDesc: "เลือกวันและเวลา ตรวจสอบคิวว่างแบบเรียลไทม์",
+    shopCard: "ผลิตภัณฑ์สุขภาพ",
+    shopDesc: "ดูรายการสินค้า ราคา และสต็อกคงเหลือ",
+    trackCard: "ติดตามสถานะ",
+    trackDesc: "ตรวจสอบนัดหมายและคำสั่งซื้อของคุณ",
+    how: "การจองทำได้ใน 3 ขั้นตอน",
+    howDesc: "เพียงเลือกเวลา ระบุข้อมูล และยืนยัน",
+    stepA: "เลือกวันและเวลา",
+    stepB: "กรอกข้อมูล",
+    stepC: "ยืนยันการจอง",
+    bookTitle: "นัดหมายกับ Suwat Clinic",
+    bookSub: "เลือกช่วงเวลาที่เหมาะกับคุณ",
+    chooseDate: "วันที่ต้องการเข้ารับบริการ",
+    chooseSlot: "ช่วงเวลาที่สะดวก",
+    available: "ว่าง",
+    full: "เต็มแล้ว",
+    closed: "ปิดให้บริการ",
+    morning: "ช่วงเช้า",
+    afternoon: "ช่วงบ่าย",
+    evening: "ช่วงเย็น",
+    next: "ดำเนินการต่อ",
+    back: "ย้อนกลับ",
+    personalInfo: "ข้อมูลสำหรับการนัดหมาย",
+    patient: "ชื่อผู้เข้ารับบริการ",
+    phone: "เบอร์โทรศัพท์",
+    reason: "อาการเบื้องต้นหรือเหตุผลที่มา",
+    reasonPlaceholder: "ระบุข้อมูลเบื้องต้นเท่าที่ต้องการ (ไม่จำเป็นต้องกรอก)",
+    privacy: "ข้อมูลอาการจะไม่ปรากฏใน LINE กลุ่มพนักงาน และเปิดได้เฉพาะผู้ที่มีสิทธิ์",
+    review: "ตรวจสอบรายละเอียดการจอง",
+    date: "วันที่",
+    slot: "ช่วงเวลา",
+    name: "ชื่อ",
+    status: "สถานะ",
+    note: "หมายเหตุ",
+    confirm: "ยืนยันการจอง",
+    success: "ทำรายการสำเร็จ",
+    booked: "บันทึกการจองเรียบร้อย",
+    ref: "หมายเลขอ้างอิง",
+    viewBookings: "ดูการนัดหมายของฉัน",
+    shopTitle: "Suwat Clinic Store",
+    shopSub: "เลือกดูผลิตภัณฑ์เสริมอาหารและสินค้าภายในคลินิก",
+    sample: "สินค้าตัวอย่าง",
+    stock: "คงเหลือ",
+    outOfStock: "สินค้าหมด",
+    add: "เพิ่มลงตะกร้า",
+    cart: "ตะกร้าสินค้า",
+    emptyCart: "ยังไม่มีสินค้าในตะกร้า",
+    checkout: "ดำเนินการสั่งซื้อ",
+    pickup: "รับที่คลินิก",
+    shipping: "จัดส่งถึงบ้าน",
+    delivery: "วิธีรับสินค้า",
+    address: "ที่อยู่จัดส่ง",
+    addressPlaceholder: "บ้านเลขที่ ถนน ตำบล อำเภอ จังหวัด รหัสไปรษณีย์",
+    total: "ยอดรวม",
+    placeOrder: "ยืนยันคำสั่งซื้อ",
+    orderCreated: "รับคำสั่งซื้อเรียบร้อย",
+    paymentPending: "ยังไม่ยืนยันการชำระเงิน กรุณาติดต่อคลินิกเพื่อชำระเงิน",
+    supplementNotice:
+      "ผลิตภัณฑ์เสริมอาหารไม่ใช่ยา ไม่มีผลในการป้องกันหรือรักษาโรค ตรวจสอบฉลากและคำแนะนำจากผู้เชี่ยวชาญก่อนเลือกซื้อ",
+    myBookings: "การนัดหมายของฉัน",
+    myOrders: "คำสั่งซื้อของฉัน",
+    nothingBooked: "ยังไม่มีรายการนัดหมาย",
+    nothingOrdered: "ยังไม่มีคำสั่งซื้อ",
+    cancel: "ยกเลิกการจอง",
+    track: "เลขพัสดุ",
+    details: "รายละเอียด",
+    myAccount: "ข้อมูลสมาชิก",
+    edit: "แก้ไขข้อมูล",
+    save: "บันทึกข้อมูล",
+    lineMember: "สมาชิกเชื่อมต่อ LINE",
+    demoMember: "สมาชิกทดลอง",
+    phoneVerify: "ยืนยันเบอร์โทร",
+    otp: "รหัส OTP",
+    sendOTP: "ส่งรหัสยืนยัน",
+    verify: "ตรวจสอบรหัส",
+    phoneUnverified: "เบอร์โทรยังไม่ผ่านการยืนยัน",
+    phoneVerified: "ยืนยันเบอร์โทรแล้ว",
+    signIn: "เข้าสู่ระบบสมาชิก",
+    loginDesc: "เข้าสู่ระบบด้วย LINE เพื่อเก็บการจองและติดตามคำสั่งซื้อในบัญชีเดียวกัน",
+    loginLine: "เข้าสู่ระบบด้วย LINE",
+    demoLogin: "ทดลองเป็นลูกค้า",
+    demoNote: "โหมดสาธิต: ไม่ใช่การส่งข้อความ LINE หรือรับเงินของจริง",
+    logout: "ออกจากระบบ",
+    contact: "ติดต่อ Suwat Clinic",
+    contactDesc: "หากมีข้อสงสัยหรือจำเป็นต้องเปลี่ยนนัด กรุณาติดต่อคลินิกทาง LINE OA เดิม",
+    protected: "ระบบนี้จำกัดการเข้าถึงข้อมูลตามบทบาท",
+    staffLogin: "เข้าสู่ระบบพนักงาน",
+    username: "ชื่อผู้ใช้",
+    password: "รหัสผ่าน",
+    dashboard: "ภาพรวม",
+    queue: "รายการจอง",
+    staffOrders: "จัดการคำสั่งซื้อ",
+    inventory: "สต็อกสินค้า",
+    addProduct: "เพิ่มผลิตภัณฑ์",
+    settings: "ตั้งค่าคิว",
+    tasks: "งานที่ต้องรับทราบ",
+    ack: "รับทราบ",
+    ackDone: "รับทราบแล้ว",
+    noTasks: "ไม่มีงานที่รอดำเนินการ",
+    bookingsToday: "คิวประจำวันที่เลือก",
+    capacity: "รับได้ทั้งหมด",
+    remaining: "คิวว่าง",
+    sales: "ยอดชำระที่ยืนยันแล้ว",
+    newTasks: "งานที่ต้องดำเนินการ",
+    bookingRef: "รหัสการจอง",
+    orderRef: "รหัสคำสั่งซื้อ",
+    actions: "จัดการ",
+    paid: "ยืนยันชำระแล้ว",
+    unpaid: "รอตรวจสอบชำระเงิน",
+    markPaid: "ตรวจสอบยอดแล้ว",
+    packing: "กำลังจัดเตรียม",
+    shipped: "จัดส่งแล้ว",
+    delivered: "ส่งถึงแล้ว",
+    checkedIn: "เช็กอิน",
+    completed: "เสร็จสิ้น",
+    approved: "อนุมัติ",
+    noShow: "ไม่มาตามนัด",
+    mark: "บันทึก",
+    slotSetting: "จำนวนคิวต่อช่วงเวลา",
+    dateOverride: "ตั้งค่าคิวเฉพาะวัน",
+    mode: "รูปแบบการยืนยันคิว",
+    auto: "ยืนยันอัตโนมัติ",
+    manual: "รอเจ้าหน้าที่ยืนยัน",
+    saveSettings: "บันทึกการตั้งค่า",
+    restock: "เพิ่มสินค้าเข้าสต็อก",
+    product: "ผลิตภัณฑ์",
+    lot: "เลขล็อต",
+    expiry: "วันหมดอายุ",
+    quantity: "จำนวน",
+    addStock: "เพิ่มสต็อก",
+    allSales: "ยอดสั่งซื้อที่ยืนยันชำระ",
+    overview: "ภาพรวมการทำงาน",
+    intro: "ออกแบบให้ใช้งานง่ายสำหรับทุกวัย",
+    powered: "Suwat Clinic • Simple care, every day",
+    demoLabel: "DEMO / ระบบสาธิต",
+    verifyLine: "LINE OA เดิมพร้อมเชื่อมต่อ",
+    loginToBook: "เข้าสู่ระบบก่อนทำรายการ",
+    reviewData: "กรุณาตรวจสอบข้อมูลก่อนส่ง",
+    wait: "กำลังประมวลผล...",
+    ok: "ตกลง",
+    active: "พร้อมใช้งาน",
+    shipProvider: "บริษัทขนส่ง",
+    trackingNumber: "หมายเลขพัสดุ",
+    notConfigured: "ยังไม่ได้เชื่อมต่อ",
+    connectLine: "เชื่อม LINE OA ภายหลังได้",
+    reserved: "คิวที่จองแล้ว",
+    newOrder: "คำสั่งซื้อใหม่",
+    why: "ออกแบบมาเพื่อคุณ",
+    designed: "ใช้งานง่าย ตัวอักษรชัดเจน รองรับทุกวัย",
+    policy: "ข้อมูลส่วนบุคคลและสุขภาพถูกจัดการตามสิทธิ์การเข้าถึง",
+    summary: "สรุปข้อมูล",
+    signInFirst: "กรุณาเข้าสู่ระบบสมาชิกก่อน",
+    currentLang: "ภาษา",
+    notAvailable: "ยังไม่เปิดใช้งาน",
+    clinicPickup: "รับที่หน้าคลินิก",
+    orderInfo: "คำสั่งซื้อจะอยู่ในสถานะรอตรวจสอบการชำระเงิน",
+    previewOnly: "ข้อมูลตัวอย่างสำหรับทดสอบระบบ",
+  },
+  en: {
+    navMenu: "MAIN MENU",
+    home: "Home",
+    booking: "Book a visit",
+    shop: "Shop",
+    appointments: "Appointments",
+    orders: "My orders",
+    account: "My account",
+    staff: "Staff portal",
+    help: "Contact clinic",
+    care: "Care that feels personal",
+    welcome: "Better care, made simpler",
+    heroTitle: "Healthcare that<br><em>feels effortless</em>",
+    heroSub:
+      "Book a visit, choose a convenient time, and browse our clinic products, all in one place.",
+    startBooking: "Book an appointment",
+    browse: "Explore products",
+    todaySlots: "Booking time windows",
+    bookAny: "Easy scheduling",
+    fast: "Simple to use",
+    private: "Private by design",
+    simple: "Your clinic, made simpler",
+    quick: "Everything in one place",
+    bookingCard: "Book an appointment",
+    bookingDesc: "Choose a day and see real-time availability",
+    shopCard: "Clinic products",
+    shopDesc: "Browse products, prices and inventory",
+    trackCard: "Track your care",
+    trackDesc: "View upcoming visits and your orders",
+    how: "Book in 3 simple steps",
+    howDesc: "Choose a slot, fill in your details, and confirm",
+    stepA: "Date & time",
+    stepB: "Your details",
+    stepC: "Confirmation",
+    bookTitle: "Book a visit at Suwat Clinic",
+    bookSub: "Choose the most convenient time for you",
+    chooseDate: "Preferred visit date",
+    chooseSlot: "Available time window",
+    available: "Available",
+    full: "Full",
+    closed: "Closed",
+    morning: "Morning",
+    afternoon: "Afternoon",
+    evening: "Late afternoon",
+    next: "Continue",
+    back: "Go back",
+    personalInfo: "Appointment details",
+    patient: "Patient name",
+    phone: "Phone number",
+    reason: "Initial symptoms or reason for visit",
+    reasonPlaceholder:
+      "Optional. Share only what you feel comfortable sharing.",
+    privacy:
+      "Your symptoms are never posted to the staff LINE group, and can only be accessed by authorized personnel.",
+    review: "Review your appointment",
+    date: "Date",
+    slot: "Time",
+    name: "Name",
+    status: "Status",
+    note: "Notes",
+    confirm: "Confirm booking",
+    success: "Success",
+    booked: "Your request has been saved",
+    ref: "Reference number",
+    viewBookings: "View my appointments",
+    shopTitle: "Suwat Clinic Store",
+    shopSub: "Explore dietary supplements and clinic products",
+    sample: "Sample product",
+    stock: "In stock",
+    outOfStock: "Out of stock",
+    add: "Add to bag",
+    cart: "Your bag",
+    emptyCart: "Your bag is empty",
+    checkout: "Checkout",
+    pickup: "Pick up at clinic",
+    shipping: "Ship to my address",
+    delivery: "Delivery method",
+    address: "Shipping address",
+    addressPlaceholder: "House number, street, district, city and postal code",
+    total: "Total",
+    placeOrder: "Place order",
+    orderCreated: "Order placed",
+    paymentPending:
+      "Payment is not yet verified. Please contact the clinic for payment instructions.",
+    supplementNotice:
+      "Dietary supplements are not medicines and do not prevent or treat diseases. Check product labels and professional advice before buying.",
+    myBookings: "My appointments",
+    myOrders: "My orders",
+    nothingBooked: "No appointments yet",
+    nothingOrdered: "No orders yet",
+    cancel: "Cancel booking",
+    track: "Tracking",
+    details: "Details",
+    myAccount: "Member profile",
+    edit: "Edit profile",
+    save: "Save changes",
+    lineMember: "LINE-connected member",
+    demoMember: "Demo member",
+    phoneVerify: "Verify phone",
+    otp: "OTP code",
+    sendOTP: "Send verification code",
+    verify: "Verify code",
+    phoneUnverified: "Phone number not verified",
+    phoneVerified: "Phone number verified",
+    signIn: "Sign in to Suwat Clinic",
+    loginDesc:
+      "Sign in with LINE to keep your appointments and purchases together.",
+    loginLine: "Continue with LINE",
+    demoLogin: "Try demo account",
+    demoNote: "Demo mode: no real LINE messages or payments are sent.",
+    logout: "Log out",
+    contact: "Contact Suwat Clinic",
+    contactDesc:
+      "Need help or want to change a booking? Contact the clinic through its existing LINE OA.",
+    protected: "Access to health details is limited by staff permissions",
+    staffLogin: "Staff sign in",
+    username: "Username",
+    password: "Password",
+    dashboard: "Dashboard",
+    queue: "Appointments",
+    staffOrders: "Orders",
+    inventory: "Inventory",
+    addProduct: "Add a product",
+    settings: "Booking settings",
+    tasks: "Tasks to acknowledge",
+    ack: "Acknowledge",
+    ackDone: "Acknowledged",
+    noTasks: "No pending tasks",
+    bookingsToday: "Appointments on selected day",
+    capacity: "Daily capacity",
+    remaining: "Open slots",
+    sales: "Verified payments",
+    newTasks: "Pending tasks",
+    bookingRef: "Booking ref",
+    orderRef: "Order ref",
+    actions: "Actions",
+    paid: "Payment verified",
+    unpaid: "Payment pending",
+    markPaid: "Verify payment",
+    packing: "Packing",
+    shipped: "Shipped",
+    delivered: "Delivered",
+    checkedIn: "Checked in",
+    completed: "Completed",
+    approved: "Confirm",
+    noShow: "No-show",
+    mark: "Save",
+    slotSetting: "Capacity per time window",
+    dateOverride: "One-day capacity override",
+    mode: "Booking approval mode",
+    auto: "Confirm automatically",
+    manual: "Require staff approval",
+    saveSettings: "Save settings",
+    restock: "Add inventory lot",
+    product: "Product",
+    lot: "Batch/lot",
+    expiry: "Expiry date",
+    quantity: "Quantity",
+    addStock: "Add stock",
+    allSales: "Verified sales",
+    overview: "Your clinic at a glance",
+    intro: "Designed for every age and ability",
+    powered: "Suwat Clinic • Simple care, every day",
+    demoLabel: "DEMO / PREVIEW",
+    verifyLine: "Existing LINE OA compatible",
+    loginToBook: "Sign in before continuing",
+    reviewData: "Check your details before submitting",
+    wait: "Processing...",
+    ok: "OK",
+    active: "Active",
+    shipProvider: "Carrier",
+    trackingNumber: "Tracking number",
+    notConfigured: "Not connected",
+    connectLine: "Connect your existing LINE OA later",
+    reserved: "Reserved",
+    newOrder: "New order",
+    why: "Designed around you",
+    designed: "Clear labels, readable type and easy steps for everyone",
+    policy: "Personal and health information is access-controlled",
+    summary: "Summary",
+    signInFirst: "Please sign in first",
+    currentLang: "Language",
+    notAvailable: "Not available yet",
+    clinicPickup: "Pick up at clinic",
+    orderInfo: "Orders are marked as awaiting payment verification",
+    previewOnly: "Sample data for testing",
+  },
+};
+Object.assign(dictionary.th, {
+  phoneSaveTitle: "หมายเลขโทรศัพท์สำหรับการติดต่อ",
+  phoneSaveHelp: "กรอกเบอร์โทรที่ติดต่อได้จริง เพื่อให้พนักงานยืนยันนัดหมาย ไม่ต้องรับ SMS OTP",
+  phoneSave: "บันทึกเบอร์โทร",
+  phoneMissing: "กรุณาบันทึกเบอร์โทรก่อนจองคิวหรือสั่งซื้อ",
+  phoneSelfReported: "เบอร์นี้กรอกด้วยตนเอง ยังไม่ได้ยืนยันว่าเป็นเจ้าของเบอร์",
+  phoneSaved: "บันทึกเบอร์โทรเรียบร้อย",
+  phoneNoSms: "ไม่มีค่า SMS OTP · เจ้าหน้าที่อาจโทรตรวจสอบเมื่อจำเป็น",
+  phonePreviouslyVerified: "หมายเลขที่เคยยืนยันแล้ว",
+  bookingPendingNote: "คำขอจองคิวรอพนักงานตรวจสอบและยืนยัน",
 });
-$root.addEventListener('change',async e=>{if(e.target.id==='booking_date'){selectedDate=e.target.value;selectedSlot='';await refreshForPage();}if(e.target.id==='staffDate'){if(staffData)staffData.date=e.target.value;await refreshForPage();}});
-$root.addEventListener('submit',async e=>{const form=e.target.closest('form[data-form]');if(form){e.preventDefault();await submit(form);}});
-window.addEventListener('popstate',()=>{page=location.pathname;refreshForPage()});
-(async function boot(){try{const results=await Promise.all([request('/api/config'),request('/api/products'),request('/api/me')]);config=results[0];allProducts=results[1].products;me=results[2];if(config.liffId&&window.liff){try{await window.liff.init({liffId:config.liffId});if(window.liff.isLoggedIn()&&!me.customer){const idToken=window.liff.getIDToken();if(idToken){const r=await post('/api/auth/line',{idToken});me.customer=r.customer;}}}catch(e){console.warn('LIFF not ready:',e.message)}}render();await refreshForPage();}catch(e){$root.innerHTML=`<div class="empty" style="min-height:100vh">${ico('info')}<h3>Unable to start Suwat Clinic</h3><p>${esc(e.message)}</p></div>`}})();
+Object.assign(dictionary.en, {
+  phoneSaveTitle: "Contact phone number",
+  phoneSaveHelp:
+    "Enter a reachable number so staff can confirm your appointment. No SMS OTP is needed.",
+  phoneSave: "Save phone",
+  phoneMissing: "Please save a phone number before booking or ordering",
+  phoneSelfReported:
+    "This number is self-reported; ownership has not been verified",
+  phoneSaved: "Phone number saved",
+  phoneNoSms: "No SMS OTP fees · Staff may call if confirmation is needed",
+  phonePreviouslyVerified: "Previously verified number",
+  bookingPendingNote:
+    "Your booking request requires staff review and confirmation",
+});
+const t = (k) => dictionary[lang][k] || k;
+const loc = (th, en) => (lang === "th" ? th : en);
+dictionary.th.medications = "ประวัติการจ่ายยา";
+dictionary.en.medications = "Medication history";
+let busy = false;
+async function sending(work) {
+  if (busy) return;
+  busy = true;
+  const opened = performance.now();
+  if (globalThis.Swal) {
+    void globalThis.Swal.fire({
+      title: loc("กำลังบันทึก…", "Saving…"),
+      text: loc("กรุณารอสักครู่", "Please wait a moment"),
+      showConfirmButton: false,
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      returnFocus: false,
+      didOpen: () => globalThis.Swal.showLoading(),
+    });
+  } else showToast(t("wait"));
+  try {
+    return await work();
+  } finally {
+    const remaining = 240 - (performance.now() - opened);
+    if (remaining > 0)
+      await new Promise((resolve) => setTimeout(resolve, remaining));
+    globalThis.Swal?.close();
+    busy = false;
+  }
+}
+
+function statusText(v) {
+  const map = {
+    pending: lang === "th" ? "รอยืนยัน" : "Pending",
+    confirmed: lang === "th" ? "ยืนยันแล้ว" : "Confirmed",
+    checked_in: t("checkedIn"),
+    completed: t("completed"),
+    cancelled: lang === "th" ? "ยกเลิกแล้ว" : "Cancelled",
+    no_show: t("noShow"),
+    awaiting_payment: t("unpaid"),
+    packing: t("packing"),
+    shipped: t("shipped"),
+    delivered: t("delivered"),
+  };
+  return map[v] || v;
+}
+function statusTag(v) {
+  const bad = ["cancelled", "no_show"],
+    warn = ["pending", "awaiting_payment"];
+  return `<span class="tag ${bad.includes(v) ? "red" : warn.includes(v) ? "warn" : ""}">${esc(statusText(v))}</span>`;
+}
+const displayDate = (s) => {
+  if (!s) return "-";
+  return new Date(s + "T12:00:00+07:00").toLocaleDateString(
+    lang === "th" ? "th-TH" : "en-GB",
+    {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: "Asia/Bangkok",
+    },
+  );
+};
+const pName = (p) => (lang === "th" ? p.title_th : p.title_en);
+const pDesc = (p) => (lang === "th" ? p.desc_th : p.desc_en);
+const sLabel = (s) => (lang === "th" ? s.label_th : s.label_en);
+function q(url) {
+  history.pushState({}, "", url);
+  page = url;
+  care.resetVisit();
+  care.closeModal(false);
+  orderResult = null;
+  cartOpen = false;
+  render();
+  refreshForPage();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("visible");
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => el.classList.remove("visible"), 3200);
+}
+async function request(
+  url,
+  body,
+  method = body === undefined ? "GET" : "POST",
+) {
+  const r = await fetch(url, {
+    method,
+    credentials: "same-origin",
+    headers: body === undefined ? {} : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  return data;
+}
+async function post(url, data = {}) {
+  return request(url, data, "POST");
+}
+function cartCount() {
+  return Object.values(cart).reduce((a, b) => a + Number(b), 0);
+}
+function cartPrice() {
+  return Object.entries(cart).reduce(
+    (a, [id, qty]) =>
+      a + (allProducts.find((p) => p.id === Number(id))?.price || 0) * qty,
+    0,
+  );
+}
+function saveCart() {
+  localStorage.setItem("sc_cart", JSON.stringify(cart));
+  render();
+}
+function navItem(path, label, iconName) {
+  const active = page === path;
+  return `<a href="${path}" class="nav-btn ${active ? "active" : ""}" data-nav="${path}" ${active ? 'aria-current="page"' : ""}>${ico(iconName)}<span>${label}</span></a>`;
+}
+function shell(content) {
+  const staff = page === "/staff";
+  const mainLinks = [
+    ["/", t("home"), "home"],
+    ["/booking", t("booking"), "calendar"],
+    ["/appointments", t("appointments"), "clock"],
+    ["/medications", t("medications"), "pill"],
+    ["/shop", t("shop"), "shop"],
+    ["/orders", t("orders"), "package"],
+    ["/account", t("account"), "user"],
+  ];
+  const mobile = [
+    mainLinks[0],
+    mainLinks[1],
+    mainLinks[2],
+    mainLinks[3],
+    mainLinks[6],
+  ];
+  const link = (links) =>
+    links.map(([path, label, icon]) => navItem(path, label, icon)).join("");
+  const brand = `<span class="brand-logo">${ico("cross")}</span><span>Suwat <b>Clinic</b></span>`;
+  const shortPage = staff
+    ? t("staff")
+    : page === "/"
+      ? loc("หน้าหลัก", "Home")
+      : t(page.slice(1));
+  return `<div class="shell"><aside class="sidebar"><a class="brand" href="/" data-nav="/">${brand}</a><div class="nav-items">${link(mainLinks)}</div>
+    <div class="side-bottom">${navItem("/staff", t("staff"), "users")}</div></aside>
+    <main class="main"><header class="topbar"><a class="brand mobile-brand" href="/" data-nav="/">${brand}</a>
+      <div class="top-left"><span class="eyebrow">SUWAT CLINIC</span><h2>${shortPage}</h2></div>
+      <div class="top-actions"><div class="lang-switch" aria-label="${t("currentLang")}"><button data-lang="th" class="${lang === "th" ? "active" : ""}" aria-pressed="${lang === "th"}">ไทย</button><button data-lang="en" class="${lang === "en" ? "active" : ""}" aria-pressed="${lang === "en"}">EN</button></div>
+      <button type="button" class="avatar" data-nav="${staff ? "/" : "/account"}" aria-label="${staff ? t("home") : t("account")}">${ico(staff ? "home" : "user")}</button></div></header>
+      <div class="main-content">${content}<footer class="footer"><span>© ${new Date().getFullYear()} Suwat Clinic</span><button type="button" class="text-link" data-nav="${staff ? "/" : "/staff"}">${staff ? t("home") : t("staff")}${ico("arrow")}</button></footer></div>
+    </main></div><nav class="mobile-bar" aria-label="${t("navMenu")}">${link(mobile)}</nav>`;
+}
+function sectionHeader(title, sub, tail = "") {
+  return `<div class="section-header"><div><span class="eyebrow">SUWAT CLINIC</span><h2>${title}</h2>${sub ? `<p>${sub}</p>` : ""}</div>${tail}</div>`;
+}
+function confirmation() {
+  const r = orderResult;
+  return `<div class="card confirmation"><div class="big-check">${ico("check")}</div><h2>${t("orderCreated")}</h2><p>${t("paymentPending")}</p><div class="divider"></div><span class="mini-title">${t("ref")}</span><h2>${esc(r.order_ref)}</h2><p>${fmtTHB(r.amount)}</p>${statusTag(r.status)}<div class="care-actions"><button class="btn primary" data-nav="/orders">${t("myOrders")} ${ico("arrow")}</button><button class="btn outline" data-nav="/">${t("home")}</button></div></div>`;
+}
+function shop() {
+  if (orderResult) return confirmation();
+  return `${sectionHeader(t("shopTitle"), t("shopSub"), `<button class="btn primary" data-action="cart">${ico("shop")} ${t("cart")} (${cartCount()})</button>`)}<div class="product-grid">${allProducts.map((p) => `<article class="product-card"><div class="product-art"><span class="pill">${t("product")}</span><img src="/assets/${esc(p.image)}" alt="${esc(pName(p))}" loading="lazy"></div><div class="product-info"><h3>${esc(pName(p))}</h3><p>${esc(pDesc(p))}</p><span class="tiny-muted">${p.stock > 0 ? `${t("stock")} ${p.stock}` : t("outOfStock")}</span><div class="price-line"><span class="price">${fmtTHB(p.price)}</span><button class="add-btn" ${p.stock < 1 ? "disabled" : ""} data-add="${p.id}" aria-label="${t("add")} ${esc(pName(p))}">${ico("plus")}</button></div></div></article>`).join("") || `<div class="empty">${ico("shop")}<h3>${t("notAvailable")}</h3></div>`}</div><p class="caption-note" style="margin-top:18px">${ico("info")} ${t("supplementNotice")}</p>${cartOpen ? cartModal() : ""}`;
+}
+function cartModal() {
+  const entries = Object.entries(cart).filter(
+    ([id, qty]) => qty > 0 && allProducts.some((p) => p.id === Number(id)),
+  );
+  return `<div class="modal-backdrop" role="presentation"><section class="modal" role="dialog" aria-modal="true" aria-label="${t("cart")}"><button class="modal-close" data-action="cart-close" aria-label="Close">${ico("close")}</button><h2>${t("cart")} <span class="tag">${cartCount()}</span></h2>${
+    entries.length
+      ? `<div>${entries
+          .map(([id, qty]) => {
+            const p = allProducts.find((p) => p.id === Number(id));
+            return `<div class="cart-row"><img src="/assets/${esc(p.image)}" alt=""><div style="flex:1"><strong style="font-size:12px">${esc(pName(p))}</strong><div style="color:var(--green);font-size:12px;font-weight:800">${fmtTHB(p.price)}</div></div><div class="qty"><button data-qty="${id}:-1" aria-label="Subtract">${ico("minus")}</button><strong>${qty}</strong><button data-qty="${id}:1" aria-label="Add" ${qty >= p.stock ? "disabled" : ""}>${ico("plus")}</button></div></div>`;
+          })
+          .join(
+            "",
+          )}</div><div class="summary-row" style="margin-top:18px"><span>${t("total")}</span><strong style="font-size:22px">${fmtTHB(cartPrice())}</strong></div><form data-form="checkout"><div class="field"><label for="delivery">${t("delivery")}</label><select class="select" id="delivery" name="delivery"><option value="pickup">${t("pickup")}</option><option value="shipping">${t("shipping")}</option></select></div><div class="field"><label for="address">${t("address")} (${lang === "th" ? "กรณีจัดส่ง" : "shipping only"})</label><textarea class="textarea" id="address" name="address" placeholder="${t("addressPlaceholder")}" style="min-height:80px"></textarea></div><p class="caption-note">${t("orderInfo")}</p><button class="btn primary" style="width:100%" ${loading ? "disabled" : ""}>${t("placeOrder")} ${ico("arrow")}</button></form>`
+      : `<div class="empty">${ico("shop")}<h3>${t("emptyCart")}</h3></div>`
+  }</section></div>`;
+}
+function orderList() {
+  return `${sectionHeader(t("myOrders"), t("trackDesc"))}${!me.customer ? loginPrompt() : orders.length ? orders.map((o) => `<div class="list-card"><div><span class="eyebrow">${esc(o.order_ref)}</span><h3>${fmtTHB(o.amount)}</h3><p>${o.items.map((i) => esc(lang === "th" ? i.title_th : i.title_en) + " ×" + i.qty).join(" · ")}</p>${o.tracking_no ? `<p>${t("track")}: ${esc(o.carrier)} · ${esc(o.tracking_no)}</p>` : ""}</div><div>${statusTag(o.status)}<p class="tiny-muted">${o.payment_status === "verified" ? t("paid") : t("unpaid")}</p></div></div>`).join("") : `<div class="card empty">${ico("package")}<h3>${t("nothingOrdered")}</h3><button class="btn primary" data-nav="/shop">${t("browse")}</button></div>`}`;
+}
+function loginPrompt() {
+  return `<section class="card login-card"><div class="profile-badge">${ico("user")}</div><h3>${t("signIn")}</h3><p>${t("loginDesc")}</p><div style="display:grid;gap:9px;margin-top:19px">${config.liffId ? `<button class="btn primary" data-action="line-login">${t("loginLine")} ${ico("arrow")}</button>` : ""}${config.demo ? `<button class="btn ${config.liffId ? "outline" : "primary"}" data-action="demo-login">${t("demoLogin")} ${ico("arrow")}</button>` : ""}</div><p class="caption-note">${config.demo ? t("demoNote") : t("connectLine")}</p></section>`;
+}
+function account() {
+  if (!me.customer)
+    return `${sectionHeader(t("myAccount"), t("loginDesc"))}${loginPrompt()}`;
+  return `${sectionHeader(t("myAccount"), t("lineMember"))}<div class="account-grid">${care.accountCards()}<div class="card account-card"><div class="profile-badge">${ico("user")}</div><h3>${esc(me.customer.display_name)}</h3><p class="muted" style="font-size:12px">${config.demo ? t("demoMember") : t("lineMember")}</p><div class="divider"></div><form data-form="profile"><div class="field"><label>${t("name")}</label><input class="input" name="name" required minlength="2" maxlength="100" value="${esc(me.customer.display_name)}"></div><div class="field"><label>${t("currentLang")}</label><select class="select" name="language"><option value="th" ${lang === "th" ? "selected" : ""}>ภาษาไทย</option><option value="en" ${lang === "en" ? "selected" : ""}>English</option></select></div><button class="btn primary">${t("save")} ${ico("check")}</button></form><div class="divider"></div><h3>${t("phoneSaveTitle")}</h3><p class="muted" style="font-size:13px">${t("phoneSaveHelp")}</p><div class="alert">${ico("info")} ${me.customer.phone_verified ? t("phonePreviouslyVerified") : t("phoneSelfReported")}</div><form data-form="phone-save"><div class="field"><label for="member_phone">${t("phone")}</label><input id="member_phone" class="input" name="phone" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="08XXXXXXXX" pattern="0[0-9]{9}" maxlength="10" value="${esc(me.customer.phone || "")}" required></div><button class="btn primary">${t("phoneSave")} ${ico("check")}</button></form><p class="caption-note">${t("phoneNoSms")}</p><div class="divider"></div><button class="btn outline" data-action="logout">${ico("logout")} ${t("logout")}</button></div></div>`;
+}
+function staffLogin() {
+  return `${sectionHeader(t("staffLogin"), t("protected"))}<div class="card login-card"><div class="profile-badge">${ico("lock")}</div><h3>${t("staffLogin")}</h3><p>${t("protected")}</p><form data-form="staff-login"><div class="field"><label>${lang === "th" ? "อีเมลพนักงาน" : "Staff email"}</label><input class="input" name="username" autocomplete="username" required placeholder="owner@example.com"></div><div class="field"><label>${t("password")}</label><input class="input" name="password" type="password" autocomplete="current-password" required></div><button class="btn primary" style="width:100%">${t("signIn")} ${ico("arrow")}</button></form>${config.demo ? `<p class="caption-note" style="margin-top:12px">Demo only: owner / demo1234 · reception / staff1234. These accounts do not exist in live mode.</p>` : ""}</div>`;
+}
+const metric = (icoName, value, label) =>
+  `<div class="metric"><span class="metric-icon">${ico(icoName)}</span><div class="metric-value">${value}</div><div class="metric-label">${label}</div></div>`;
+function staff() {
+  if (!me.staff) return staffLogin();
+  if (!staffData) return `<div class="skeleton"></div>`;
+  const {
+    metrics,
+    bookings: rows,
+    orders: orows,
+    tasks,
+    slots: slotData,
+    products: prd,
+    staff: user,
+  } = staffData;
+  const owner = user.role === "owner",
+    reception = user.role === "reception",
+    store = user.role === "store";
+  const tabs = [
+    ["overview", t("dashboard")],
+    ["queue", t("queue")],
+    ...(user.clinical_access && !store
+      ? [["refills", loc("คำขอชุดยาเดิม", "Medication requests")]]
+      : []),
+    ["tasks", t("tasks")],
+    ["orders", t("staffOrders")],
+    ["inventory", t("inventory")],
+    ["settings", t("settings")],
+  ].filter(
+    ([key]) =>
+      owner ||
+      (reception
+        ? ["overview", "queue", "tasks", "refills"].includes(key)
+        : ["overview", "orders", "tasks"].includes(key)),
+  );
+  const tabNav = `<div class="admin-tabs">${tabs.map(([key, label]) => `<button class="${adminTab === key ? "active" : ""}" data-tab="${key}">${label}</button>`).join("")}</div>`;
+  let content = "";
+  if (adminTab === "overview" && !store) content = care.staffOverview(user);
+  if (adminTab === "refills" && user.clinical_access)
+    content = care.staffRefills();
+  if (adminTab === "overview" && store)
+    content = `<div class="metric-grid">${metric("calendar", metrics.bookings_today, t("bookingsToday"))}${metric("clock", metrics.remaining_today, t("remaining"))}${metric("wallet", fmtTHB(metrics.order_sales), t("sales"))}${metric("bell", metrics.pending_tasks, t("newTasks"))}</div><div class="two-col"><div class="card"><h3>${t("tasks")}</h3>${
+      tasks
+        .slice(0, 6)
+        .map((x) => taskRow(x))
+        .join("") || `<div class="empty">${t("noTasks")}</div>`
+    }</div><div class="side-summary"><h3>${loc("LINE ของฉัน", "My LINE")}</h3>${care.staffLine(user)}<div class="divider"></div><h3>${t("slotSetting")}</h3>${slotData.map((s) => `<div class="day-row"><span>${s.start}–${s.end}</span><strong>${s.used}/${s.capacity}</strong></div><div class="bar"><span style="width:${s.capacity ? Math.min(100, (s.used / s.capacity) * 100) : 0}%"></span></div>`).join("")}</div></div>`;
+  if (adminTab === "tasks")
+    content = `<div class="card"><h3>${t("tasks")}</h3>${tasks.map((x) => taskRow(x)).join("") || `<div class="empty">${t("noTasks")}</div>`}</div>`;
+  if (adminTab === "queue")
+    content = `<div class="card"><div class="section-header"><div><h3>${t("bookingsToday")}</h3><p>${displayDate(staffData.date)}</p></div><input type="date" id="staffDate" value="${staffData.date}" class="input" style="width:174px"></div><div class="table-wrap"><table><thead><tr><th>${t("bookingRef")}</th><th>${t("name")}</th><th>${t("slot")}</th><th>${t("status")}</th><th>${t("actions")}</th></tr></thead><tbody>${rows.map((b) => `<tr><td><strong>${esc(b.booking_ref)}</strong></td><td>${esc(b.patient_name)}</td><td>${esc(b.slot_key)}</td><td>${statusTag(b.status)}</td><td>${bookingActions(b)}</td></tr>`).join("") || `<tr><td colspan="5">${t("nothingBooked")}</td></tr>`}</tbody></table></div></div>`;
+  if (adminTab === "orders")
+    content = `<div class="card"><h3>${t("staffOrders")}</h3><div class="table-wrap"><table><thead><tr><th>${t("orderRef")}</th><th>${t("total")}</th><th>${t("status")}</th><th>${t("actions")}</th></tr></thead><tbody>${orows.map((o) => `<tr><td><strong>${esc(o.order_ref)}</strong><br><span class="tiny-muted">${esc(o.delivery_method)}</span></td><td>${fmtTHB(o.amount)}<br><span class="tiny-muted">${o.payment_status === "verified" ? t("paid") : t("unpaid")}</span></td><td>${statusTag(o.status)}</td><td>${orderActions(o, owner)}</td></tr>`).join("") || `<tr><td colspan="4">${t("nothingOrdered")}</td></tr>`}</tbody></table></div></div>`;
+  if (adminTab === "inventory")
+    content = `<div class="card"><h3>${t("inventory")}</h3><div class="table-wrap"><table><thead><tr><th>SKU</th><th>${t("product")}</th><th>${t("stock")}</th><th>${t("total")}</th></tr></thead><tbody>${prd.map((p) => `<tr><td>${esc(p.sku)}</td><td>${esc(pName(p))}</td><td><span class="tag ${p.stock < 5 ? "warn" : ""}">${p.stock}</span></td><td>${fmtTHB(p.price)}</td></tr>`).join("")}</tbody></table></div><div class="divider"></div><h3>${t("restock")}</h3><form data-form="restock" class="stock-form"><div class="field"><label>${t("product")}</label><select class="select" name="product_id">${prd.map((p) => `<option value="${p.id}">${esc(pName(p))}</option>`).join("")}</select></div><div class="field"><label>${t("lot")}</label><input class="input" name="lot_no" required placeholder="LOT-001"></div><div class="field"><label>${t("quantity")}</label><input class="input" name="qty" type="number" min="1" max="100000" value="10" required></div><div class="field"><label>${t("expiry")}</label><input class="input" name="expiry_date" type="date" min="${today()}" value="${later(365)}" required></div><button class="btn primary">${t("addStock")}</button></form><div class="divider"></div><h3>${t("addProduct")}</h3><form data-form="product-create" class="stock-form"><div class="field"><label>SKU</label><input class="input" name="sku" required maxlength="32"></div><div class="field"><label>ชื่อภาษาไทย</label><input class="input" name="title_th" required></div><div class="field"><label>English name</label><input class="input" name="title_en" required></div><div class="field"><label>ราคา (฿)</label><input class="input" type="number" name="price" min="0" required></div><button class="btn primary">${t("addProduct")}</button></form></div>`;
+  if (adminTab === "settings")
+    content = `<div class="config-grid"><div class="card"><h3>${t("slotSetting")}</h3><p class="muted">${t("capacity")}</p><form data-form="slots">${slotData.map((s) => `<div class="field"><label>${s.start}–${s.end} (${esc(sLabel(s))})</label><input class="input" name="capacity_${esc(s.key)}" type="number" min="0" max="500" value="${s.capacity}" required></div>`).join("")}<button class="btn primary">${t("saveSettings")}</button></form></div><div class="card"><h3>${t("mode")}</h3><form data-form="mode"><div class="field"><select class="select" name="mode"><option value="auto" ${staffData.booking_mode === "auto" ? "selected" : ""}>${t("auto")}</option><option value="manual" ${staffData.booking_mode === "manual" ? "selected" : ""}>${t("manual")}</option></select></div><button class="btn primary">${t("saveSettings")}</button></form><div class="divider"></div><h3>${t("dateOverride")}</h3><form data-form="override"><div class="field"><label>${t("date")}</label><input class="input" type="date" name="date" min="${today()}" value="${staffData.date}" required></div><div class="field"><label>${t("slot")}</label><select class="select" name="key">${slotData.map((s) => `<option value="${esc(s.key)}">${s.start}–${s.end}</option>`).join("")}</select></div><div class="field"><label>${t("capacity")}</label><input class="input" type="number" name="capacity" value="6" min="0" max="500" required></div><button class="btn outline">${t("saveSettings")}</button></form></div></div>`;
+  if (adminTab === "settings" && owner) {
+    content += care.staffPermissions();
+    content += `<div class="card" style="margin-top:17px"><h3>LINE Staff Group / กลุ่มแจ้งเตือนพนักงาน</h3><p class="muted">Invite the existing LINE OA to the staff group, enable webhooks and choose a verified group seen by the webhook. Do not use a patient group.</p><form data-form="line-group"><div class="field"><select class="select" name="group_id" required><option value="">${t("chooseSlot")}</option>${lineGroups.groups.map((g) => `<option value="${esc(g.group_id)}" ${g.group_id === lineGroups.active ? "selected" : ""}>${esc(g.group_id.slice(0, 16))}…</option>`).join("")}</select></div><button class="btn primary" ${lineGroups.groups.length < 1 ? "disabled" : ""}>${t("saveSettings")}</button></form></div>`;
+  }
+  return `${sectionHeader(t("overview"), `${esc(user.name)} · ${{ owner: loc("เจ้าของ", "Owner"), reception: loc("หน้าคลินิก", "Reception"), store: loc("ร้านค้า", "Store") }[user.role] || ""}`, `<button class="btn outline small-btn" data-action="staff-logout">${ico("logout")} ${t("logout")}</button>`)}${tabNav}${content}`;
+}
+function taskRow(x) {
+  return `<div class="day-row"><div><strong style="display:block;font-size:12px">${esc(x.title)}</strong><span class="tiny-muted">${esc(x.kind)} · ${new Date(x.created_at).toLocaleString(lang === "th" ? "th-TH" : "en-US", { timeZone: "Asia/Bangkok" })}</span>${x.acknowledged_by?.length ? `<div class="tiny-muted" style="color:#287a65">${ico("check")} ${esc(x.acknowledged_by.map((a) => a.display_name + " · " + new Date(a.acknowledged_at).toLocaleString(lang === "th" ? "th-TH" : "en-US", { timeZone: "Asia/Bangkok" })).join(" | "))}</div>` : ""}</div>${x.my_ack ? `<span class="tag">${ico("check")} ${t("ackDone")}</span>` : `<button class="btn soft small-btn" data-ack="${x.id}">${t("ack")}</button>`}</div>`;
+}
+function bookingActions(b) {
+  const map = {
+    pending: [
+      ["confirmed", t("approved")],
+      ["cancelled", t("cancel")],
+    ],
+    confirmed: [
+      ["checked_in", t("checkedIn")],
+      ["no_show", t("noShow")],
+      ["cancelled", t("cancel")],
+    ],
+    checked_in: [["completed", t("completed")]],
+  };
+  return `<div class="btn-group">${
+    (map[b.status] || [])
+      .map(([status, label]) =>
+        status === "checked_in"
+          ? `<button class="btn soft small-btn" data-care="scanner">${ico("scan")} ${label}</button>`
+          : `<button class="btn outline small-btn" data-book-status="${b.id}:${status}">${label}</button>`,
+      )
+      .join("") || "—"
+  }</div>`;
+}
+function orderActions(o, owner) {
+  const map = {
+    awaiting_payment: [["cancelled", t("cancel")]],
+    confirmed: [
+      ["packing", t("packing")],
+      ["cancelled", t("cancel")],
+    ],
+    packing: [
+      ["shipped", t("shipped")],
+      ["cancelled", t("cancel")],
+    ],
+    shipped: [["delivered", t("delivered")]],
+  };
+  return `<div class="btn-group"><button class="btn outline small-btn" data-fulfillment="${o.id}">${t("details")}</button>${o.status === "awaiting_payment" && owner ? `<button class="btn soft small-btn" data-payment="${o.id}">${t("markPaid")}</button>` : ""}${(map[o.status] || []).map(([status, label]) => `<button class="btn outline small-btn" data-order-status="${o.id}:${status}">${label}</button>`).join("")}</div>`;
+}
+function render() {
+  document.documentElement.lang = lang;
+  $root.innerHTML = shell(
+    page === "/"
+      ? care.home()
+      : page === "/booking"
+        ? care.bookingPage()
+        : page === "/shop"
+          ? shop()
+          : page === "/appointments"
+            ? care.appointmentsPage()
+            : page === "/orders"
+              ? orderList()
+              : page === "/account"
+                ? account()
+                : page === "/staff"
+                  ? staff()
+                  : page === "/medications"
+                    ? care.medicationsPage()
+                    : care.home(),
+  );
+}
+async function refreshForPage() {
+  const current = page;
+  try {
+    const work = [care.refresh(current, staffData?.date || today())];
+    if (current === "/orders" && me.customer)
+      work.push(
+        request("/api/orders").then((r) => {
+          orders = r.orders;
+        }),
+      );
+    if (current === "/staff" && me.staff)
+      work.push(
+        request(
+          "/api/staff/overview?date=" +
+            encodeURIComponent(staffData?.date || today()),
+        ).then((r) => {
+          staffData = r;
+          me.staff = r.staff;
+        }),
+      );
+    await Promise.all(work);
+  } catch (e) {
+    showToast(care.errorText(e));
+  }
+  if (page === current) {
+    render();
+    if (current === "/appointments")
+      void care.followLink().catch(care.showError);
+  }
+}
+
+let lineReady;
+async function getLiff() {
+  if (!config.liffId) throw new Error(t("notConfigured"));
+  lineReady ||= (async () => {
+    if (!window.liff)
+      await new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "https://static.line-scdn.net/liff/edge/2/sdk.js";
+        const timer = setTimeout(() => {
+          script.remove();
+          reject(new Error(t("notConfigured")));
+        }, 8000);
+        script.onload = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+        script.onerror = () => {
+          clearTimeout(timer);
+          script.remove();
+          reject(new Error(t("notConfigured")));
+        };
+        document.head.append(script);
+      });
+    await window.liff.init({ liffId: config.liffId });
+    return window.liff;
+  })().catch((e) => {
+    lineReady = null;
+    throw e;
+  });
+  return lineReady;
+}
+
+async function lineLogin() {
+  try {
+    const liff = await getLiff();
+    if (!liff.isLoggedIn()) {
+      liff.login({ redirectUri: location.href });
+      return;
+    }
+    const token = liff.getIDToken();
+    if (!token) throw new Error(t("notConfigured"));
+    const r = await sending(() =>
+      post("/api/auth/line", { idToken: token, lang }),
+    );
+    sessionStorage.removeItem("sc_line_signed_out");
+    me.customer = r.customer;
+    await refreshForPage();
+  } catch (e) {
+    care.showError(e);
+  }
+}
+
+async function linkStaffLine() {
+  const liff = await getLiff();
+  if (!liff.isLoggedIn()) {
+    liff.login({
+      redirectUri: new URL("/staff?link_line=1", location.origin).href,
+    });
+    return;
+  }
+  const idToken = liff.getIDToken();
+  if (!idToken) throw new Error(t("notConfigured"));
+  if (
+    !(await care.confirmAction(
+      loc(
+        "ผูก LINE ที่กำลังเปิดอยู่กับบัญชีสตาฟนี้",
+        "Link this LINE account to your staff profile",
+      ),
+    ))
+  )
+    return;
+  await sending(() => post("/api/staff/clinic/line", { idToken }));
+  await refreshForPage();
+  showToast(loc("ผูก LINE สำเร็จ", "LINE linked"));
+}
+async function ensureLogin() {
+  if (me.customer) return true;
+  if (config.demo) {
+    showToast(t("signInFirst"));
+    q("/account");
+    return false;
+  }
+  if (config.liffId) {
+    await lineLogin();
+    return !!me.customer;
+  }
+  showToast(t("notConfigured"));
+  return false;
+}
+async function handleAction(el) {
+  const action = el.dataset.action;
+  if (action === "cart") {
+    cartOpen = true;
+    render();
+    return;
+  }
+  if (action === "cart-close") {
+    cartOpen = false;
+    render();
+    return;
+  }
+  if (action === "demo-login") {
+    try {
+      const r = await post("/api/auth/demo", { name: "Demo Customer" });
+      me.customer = r.customer;
+      showToast(t("success"));
+      refreshForPage();
+    } catch (e) {
+      showToast(care.errorText(e));
+    }
+    return;
+  }
+  if (action === "line-login") {
+    await lineLogin();
+    return;
+  }
+  if (action === "logout") {
+    await sending(() => post("/api/auth/logout"));
+    sessionStorage.setItem("sc_line_signed_out", "true");
+    care.reset();
+    me.customer = null;
+    orders = [];
+    render();
+    return;
+  }
+  if (action === "staff-logout") {
+    await sending(() => post("/api/staff/logout"));
+    care.reset();
+    me.staff = null;
+    staffData = null;
+    render();
+    return;
+  }
+}
+async function submit(form) {
+  const type = form.dataset.form,
+    d = Object.fromEntries(new FormData(form).entries());
+  try {
+    if (type === "profile") {
+      const r = await post("/api/me/profile", {
+        display_name: d.name,
+        preferred_lang: d.language,
+      });
+      me.customer = r.customer;
+      lang = d.language;
+      localStorage.setItem("sc_lang", lang);
+      showToast(t("success"));
+      render();
+    }
+    if (type === "phone-save") {
+      const r = await post("/api/me/phone", { phone: d.phone.trim() });
+      me.customer = r.customer;
+      showToast(t("phoneSaved"));
+      render();
+    }
+    if (type === "checkout") {
+      if (!(await ensureLogin())) {
+        cartOpen = false;
+        render();
+        return;
+      }
+      if (!me.customer.phone && !config.demo) {
+        cartOpen = false;
+        q("/account");
+        showToast(t("phoneMissing"));
+        return;
+      }
+      const items = Object.entries(cart)
+        .filter(([, qty]) => qty > 0)
+        .map(([id, qty]) => ({ id: Number(id), qty }));
+      if (!items.length) throw new Error(t("emptyCart"));
+      loading = true;
+      const r = await post("/api/orders", {
+        items,
+        delivery_method: d.delivery,
+        shipping_address: d.address,
+        request_id: crypto.randomUUID(),
+      });
+      orderResult = r.order;
+      cart = {};
+      localStorage.removeItem("sc_cart");
+      cartOpen = false;
+      showToast(t("orderCreated"));
+      render();
+    }
+    if (type === "staff-login") {
+      const r = await post("/api/staff/login", {
+        username: d.username,
+        password: d.password,
+      });
+      me.staff = r.staff;
+      adminTab = "overview";
+      showToast(t("success"));
+      await refreshForPage();
+    }
+    if (type === "slots") {
+      const data = staffData.slots.map((s) => ({
+        key: s.key,
+        capacity: Number(d["capacity_" + s.key]),
+      }));
+      await post("/api/staff/slots", { slots: data });
+      showToast(t("success"));
+      await refreshForPage();
+    }
+    if (type === "mode") {
+      await post("/api/staff/booking-mode", { mode: d.mode });
+      showToast(t("success"));
+      await refreshForPage();
+    }
+    if (type === "override") {
+      await post("/api/staff/override", {
+        date: d.date,
+        key: d.key,
+        capacity: Number(d.capacity),
+        closed: Number(d.capacity) === 0,
+      });
+      showToast(t("success"));
+      staffData.date = d.date;
+      await refreshForPage();
+    }
+    if (type === "line-group") {
+      await post("/api/staff/line-group", { group_id: d.group_id });
+      showToast(t("success"));
+      lineGroups = await request("/api/staff/line-groups");
+      render();
+    }
+    if (type === "product-create") {
+      await post("/api/staff/products", {
+        sku: d.sku,
+        title_th: d.title_th,
+        title_en: d.title_en,
+        price: Number(d.price),
+      });
+      showToast(t("success"));
+      allProducts = (await request("/api/products")).products;
+      await refreshForPage();
+    }
+    if (type === "restock") {
+      await post("/api/staff/restock", {
+        product_id: Number(d.product_id),
+        lot_no: d.lot_no,
+        qty: Number(d.qty),
+        expiry_date: d.expiry_date,
+      });
+      showToast(t("success"));
+      allProducts = (await request("/api/products")).products;
+      await refreshForPage();
+    }
+  } catch (e) {
+    showToast(care.errorText(e));
+  } finally {
+    loading = false;
+  }
+}
+$root.addEventListener("click", async (e) => {
+  const el = e.target.closest("button,[data-nav],a[data-nav]");
+  if (!el || el.dataset.care || busy) return;
+  if (el.dataset.nav) {
+    e.preventDefault();
+    q(el.dataset.nav);
+    return;
+  }
+  if (el.dataset.lang) {
+    lang = el.dataset.lang;
+    localStorage.setItem("sc_lang", lang);
+    if (me.customer) {
+      post("/api/me/language", { lang }).catch(console.warn);
+    }
+    render();
+    return;
+  }
+  if (el.dataset.tab) {
+    adminTab = el.dataset.tab;
+    render();
+    if (adminTab === "settings" && me.staff?.role === "owner") {
+      try {
+        lineGroups = await request("/api/staff/line-groups");
+        render();
+      } catch (e) {
+        showToast(care.errorText(e));
+      }
+    }
+    return;
+  }
+  if (el.dataset.add) {
+    const p = allProducts.find((x) => x.id === Number(el.dataset.add));
+    if (!p) return;
+    if ((cart[p.id] || 0) >= p.stock) {
+      showToast(t("outOfStock"));
+      return;
+    }
+    cart[p.id] = (cart[p.id] || 0) + 1;
+    saveCart();
+    showToast(t("add"));
+    return;
+  }
+  if (el.dataset.qty) {
+    const [id, delta] = el.dataset.qty.split(":");
+    const p = allProducts.find((x) => x.id === Number(id));
+    cart[id] = Math.max(
+      0,
+      Math.min(p?.stock || 0, (cart[id] || 0) + Number(delta)),
+    );
+    if (!cart[id]) delete cart[id];
+    saveCart();
+    return;
+  }
+  if (el.dataset.cancelBooking) {
+    if (!(await care.confirmAction(loc("ยกเลิกนัดนี้", "Cancel this appointment"))))
+      return;
+    try {
+      await sending(() =>
+        post("/api/bookings/" + el.dataset.cancelBooking + "/cancel"),
+      );
+      showToast(t("success"));
+      await refreshForPage();
+    } catch (e) {
+      showToast(care.errorText(e));
+    }
+    return;
+  }
+  if (el.dataset.ack) {
+    try {
+      await sending(() => post("/api/staff/tasks/" + el.dataset.ack + "/ack"));
+      showToast(t("ackDone"));
+      await refreshForPage();
+    } catch (e) {
+      showToast(care.errorText(e));
+    }
+    return;
+  }
+  if (el.dataset.bookStatus) {
+    const [id, status] = el.dataset.bookStatus.split(":");
+    if (
+      !(await care.confirmAction(
+        loc("ยืนยันการอัปเดตสถานะ", "Confirm status update"),
+      ))
+    )
+      return;
+    try {
+      await sending(() =>
+        post("/api/staff/bookings/" + id + "/status", { status }),
+      );
+      showToast(t("success"));
+      await refreshForPage();
+    } catch (e) {
+      showToast(care.errorText(e));
+    }
+    return;
+  }
+  if (el.dataset.fulfillment) {
+    try {
+      const r = await request(
+        "/api/staff/orders/" + el.dataset.fulfillment + "/fulfillment",
+      );
+      alert(
+        r.order.order_ref +
+          "\n" +
+          (r.order.delivery_method === "shipping"
+            ? r.order.shipping_address
+            : t("clinicPickup")),
+      );
+    } catch (e) {
+      showToast(care.errorText(e));
+    }
+    return;
+  }
+  if (el.dataset.payment) {
+    if (!(await care.confirmAction(t("markPaid")))) return;
+    try {
+      await sending(() =>
+        post("/api/staff/orders/" + el.dataset.payment + "/verify-payment"),
+      );
+      showToast(t("success"));
+      await refreshForPage();
+    } catch (e) {
+      showToast(care.errorText(e));
+    }
+    return;
+  }
+  if (el.dataset.orderStatus) {
+    const [id, status] = el.dataset.orderStatus.split(":");
+    let data = { status };
+    if (status === "shipped") {
+      const carrier = prompt(t("shipProvider"));
+      if (!carrier) return;
+      const tracking_no = prompt(t("trackingNumber"));
+      if (!tracking_no) return;
+      data = { status, carrier, tracking_no };
+    }
+    if (
+      !(await care.confirmAction(
+        loc("ยืนยันการอัปเดตสถานะ", "Confirm status update"),
+      ))
+    )
+      return;
+    try {
+      await sending(() => post("/api/staff/orders/" + id + "/status", data));
+      showToast(t("success"));
+      await refreshForPage();
+    } catch (e) {
+      showToast(care.errorText(e));
+    }
+    return;
+  }
+  if (el.dataset.action) {
+    try {
+      await handleAction(el);
+    } catch (e) {
+      care.showError(e);
+    }
+    return;
+  }
+});
+$root.addEventListener("change", async (e) => {
+  if (e.target.id === "staffDate") {
+    if (staffData) staffData.date = e.target.value;
+    await refreshForPage();
+  }
+});
+$root.addEventListener("submit", async (e) => {
+  const form = e.target.closest("form[data-form]");
+  if (form) {
+    e.preventDefault();
+    if (!busy) {
+      if (form.dataset.form === "checkout" && !me.customer) await submit(form);
+      else await sending(() => submit(form));
+    }
+  }
+});
+window.addEventListener("popstate", () => {
+  care.closeModal(false);
+  page = location.pathname === "/admin" ? "/staff" : location.pathname;
+  refreshForPage();
+});
+const care = createCareUI({
+  root: $root,
+  t,
+  loc,
+  ico,
+  esc,
+  today,
+  later,
+  displayDate,
+  request,
+  post,
+  state: () => ({ ...me, config, page, busy }),
+  render,
+  navigate: q,
+  sending,
+  toast: showToast,
+  statusTag,
+  sectionHeader,
+  loginPrompt,
+  staffActions: bookingActions,
+  linkStaffLine,
+  refreshApp: refreshForPage,
+});
+
+(async function boot() {
+  const results = await Promise.allSettled([
+    request("/api/config"),
+    request("/api/products"),
+    request("/api/me"),
+  ]);
+  if (results[0].status === "fulfilled") config = results[0].value;
+  if (results[1].status === "fulfilled")
+    allProducts = results[1].value.products;
+  if (results[2].status === "fulfilled") me = results[2].value;
+  render();
+  if (config.liffId) {
+    try {
+      const liff = await getLiff();
+      if (
+        page === "/staff" &&
+        me.staff &&
+        new URLSearchParams(location.search).get("link_line") === "1"
+      ) {
+        history.replaceState({}, "", "/staff");
+        await linkStaffLine();
+      } else if (
+        page !== "/staff" &&
+        liff.isLoggedIn() &&
+        !me.customer &&
+        !sessionStorage.getItem("sc_line_signed_out")
+      ) {
+        const idToken = liff.getIDToken();
+        if (idToken)
+          me.customer = (
+            await post("/api/auth/line", { idToken, lang })
+          ).customer;
+      }
+    } catch {
+      console.warn("LINE session unavailable");
+    }
+  }
+  await refreshForPage();
+})();
