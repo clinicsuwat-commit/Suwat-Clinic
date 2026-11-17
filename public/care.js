@@ -299,6 +299,22 @@ export function createCareUI(api) {
       "ขณะนี้เชื่อมต่อ LINE ไม่สำเร็จ กรุณาลองอีกครั้ง",
       "LINE is currently unavailable. Please try again.",
     ],
+    LINE_LOGIN_INCOMPLETE: [
+      "ระบบยังเชื่อมบัญชี LINE ไม่สำเร็จ แตะปุ่มด้านล่างเพื่อลองอีกครั้ง",
+      "The LINE connection is incomplete. Use the button below to try again.",
+    ],
+    LINE_SDK_UNAVAILABLE: [
+      "ตอนนี้เปิดการเข้าสู่ระบบ LINE ไม่ได้ ลองใหม่อีกครั้ง หรือติดต่อคลินิก",
+      "LINE sign-in couldn't open. Try again or contact the clinic.",
+    ],
+    LINE_SESSION_NOT_SAVED: [
+      "บันทึกการเข้าสู่ระบบของคลินิกไม่ได้ ลองเปิดคลินิกจากแอป LINE อีกครั้ง",
+      "The clinic couldn't save your sign-in. Try opening the clinic in the LINE app.",
+    ],
+    LINE_CLINIC_UNAVAILABLE: [
+      "ตอนนี้คลินิกเปิดข้อมูลสมาชิกไม่ได้ ลองอีกครั้ง หรือติดต่อคลินิก",
+      "Your clinic account couldn't be loaded. Try again or contact the clinic.",
+    ],
   };
 
   const errorText = (error) => {

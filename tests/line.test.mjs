@@ -4,6 +4,8 @@ import { Readable } from "node:stream";
 import {
   authenticateLineCustomer,
   clearExternalLineSession,
+  isReturningFromLine,
+  lineEntryUrl,
   lineLoginPendingKey,
   lineSignedOutKey,
 } from "../public/line-session.js";
@@ -66,8 +68,10 @@ function loginFixture({ inClient = false, loggedIn = true } = {}) {
     liff,
     storage,
     calls,
-    callbackUrl:
+    redirectUri: lineEntryUrl(
       "https://clinic.example/appointments?booking=17&action=attend&code=old&state=old",
+      "appointments",
+    ),
   };
 }
 
@@ -87,7 +91,7 @@ test("external logout and sign-in refresh the LIFF session and resume the appoin
   );
   assert.deepEqual(calls, [
     "logout",
-    "https://clinic.example/appointments?booking=17&action=attend",
+    "https://clinic.example/?view=appointments&booking=17&action=attend&clinic_line_return=1",
   ]);
   assert.equal(storage.getItem(lineSignedOutKey), undefined);
   assert.equal(storage.getItem(lineLoginPendingKey), "true");
@@ -100,6 +104,54 @@ test("external logout and sign-in refresh the LIFF session and resume the appoin
     { id: 19 },
   );
   assert.equal(calls.length, 2);
+});
+
+test("LIFF app links preserve clinic navigation and discard authorization parameters", () => {
+  const current =
+    "https://clinic.example/medications?refill=17&code=old&state=old&liff.state=old";
+  assert.equal(
+    lineEntryUrl(current, "medications", "123456-fixture"),
+    "https://liff.line.me/123456-fixture?view=medications&refill=17",
+  );
+  assert.equal(lineEntryUrl(current, "medications", "../unsafe"), "");
+  assert.equal(
+    lineEntryUrl("https://clinic.example/?view=account", "account"),
+    "https://clinic.example/?view=account",
+  );
+});
+
+test("an unfinished LINE return is detected when the browser loses the pending marker", async () => {
+  const fixture = loginFixture({ loggedIn: false });
+  const returningFromLogin = isReturningFromLine(
+    "https://clinic.example/?view=account&code=example&state=example",
+    fixture.storage,
+  );
+  assert.equal(returningFromLogin, true);
+  assert.equal(
+    isReturningFromLine(
+      "https://clinic.example/?view=account&clinic_line_return=1",
+      fixture.storage,
+    ),
+    true,
+  );
+  await assert.rejects(
+    authenticateLineCustomer({ ...fixture, returningFromLogin }),
+    { code: "LINE_LOGIN_INCOMPLETE" },
+  );
+  assert.deepEqual(fixture.calls, []);
+});
+
+test("a callback URL cannot override an explicit clinic logout", async () => {
+  const fixture = loginFixture({ inClient: true });
+  fixture.storage.setItem(lineSignedOutKey, "true");
+  assert.equal(
+    await authenticateLineCustomer({
+      ...fixture,
+      returningFromLogin: true,
+      verify: () => assert.fail("Unexpected sign-in after logout"),
+    }),
+    null,
+  );
 });
 
 test("external sign-in retries an expired ID token once and surfaces configuration errors", async () => {

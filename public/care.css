@@ -175,6 +175,50 @@ select {
   border-color: #cddcf2;
   color: #17448d;
 }
+.member-login h3 {
+  font-size: 21px;
+}
+.member-login > p,
+.member-login-error,
+.member-login-actions .btn {
+  font-size: 16px;
+  line-height: 1.5;
+}
+.member-login-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+.member-login-actions .btn {
+  min-width: 0;
+  min-height: 52px;
+  text-align: center;
+}
+.member-login-actions .btn:focus-visible,
+.member-login-error:focus {
+  outline: 3px solid #164eaf;
+  outline-offset: 3px;
+}
+.member-login-status,
+.member-login-error {
+  padding: 14px 15px;
+  border: 1px solid #cadcf5;
+  border-radius: 13px;
+  color: #112d53;
+  background: #eef5ff;
+}
+.member-login-error p {
+  margin: 6px 0 0;
+  color: inherit;
+}
+.member-login > .member-login-status {
+  color: #112d53;
+}
+.line-startup {
+  margin: 18px;
+  letter-spacing: normal;
+  text-align: center;
+}
 .btn.white {
   background: #fff;
   color: #123e86;
@@ -1190,6 +1234,36 @@ th {
   }
   .mobile-bar .nav-btn.active {
     background: #eef5ff;
+  }
+}
+@media (max-width: 380px) {
+  .topbar {
+    padding-inline: 10px;
+    gap: 8px;
+  }
+  .topbar .mobile-brand {
+    gap: 6px;
+    font-size: 17px;
+  }
+  .mobile-brand .brand-logo {
+    width: 32px;
+    height: 32px;
+  }
+  .top-actions {
+    gap: 6px;
+  }
+  .lang-switch {
+    padding: 2px;
+  }
+  .lang-switch button {
+    min-width: 44px;
+    min-height: 44px;
+    padding-inline: 6px;
+    font-size: 13px;
+  }
+  .avatar {
+    width: 44px;
+    height: 44px;
   }
 }
 @media (max-width: 620px) {

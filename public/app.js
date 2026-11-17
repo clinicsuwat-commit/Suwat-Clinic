@@ -1,10 +1,15 @@
-import { createCareUI } from "./care.js";
+import { createCareUI } from "./care.js?v=3.1.2";
 import {
   authenticateLineCustomer,
   clearExternalLineSession,
+  isReturningFromLine,
+  lineEntryUrl,
   lineLoginPendingKey,
+  lineReturnParam,
+  lineSignInError,
   lineSignedOutKey,
-} from "./line-session.js";
+  rememberLineLogin,
+} from "./line-session.js?v=3.1.2";
 
 const $root = document.getElementById("root");
 const icons = {
@@ -73,25 +78,8 @@ const later = (days) => {
   return d.toISOString().slice(0, 10);
 };
 let lang = localStorage.getItem("sc_lang") === "en" ? "en" : "th";
-const requestedView = new URLSearchParams(location.search).get("view");
-let page = (
-  [
-    "/",
-    "/booking",
-    "/shop",
-    "/appointments",
-    "/orders",
-    "/account",
-    "/medications",
-    "/staff",
-    "/admin",
-    "/manager",
-  ].includes(location.pathname)
-    ? location.pathname
-    : "/"
-).replace(/^\/(?:admin|manager)$/, "/staff");
-if (
-  [
+function pageFromLocation() {
+  const views = [
     "booking",
     "shop",
     "appointments",
@@ -99,9 +87,14 @@ if (
     "account",
     "medications",
     "staff",
-  ].includes(requestedView)
-)
-  page = "/" + requestedView;
+  ];
+  const requestedView = new URLSearchParams(location.search).get("view");
+  if (views.includes(requestedView)) return "/" + requestedView;
+  const path = location.pathname;
+  if (path === "/admin" || path === "/manager") return "/staff";
+  return views.includes(path.slice(1)) ? path : "/";
+}
+let page = pageFromLocation();
 let lineGroups = { groups: [], active: "" };
 let config = { demo: false, liffId: "" },
   me = { customer: null, staff: null },
@@ -287,7 +280,6 @@ const dictionary = {
     shipProvider: "บริษัทขนส่ง",
     trackingNumber: "หมายเลขพัสดุ",
     notConfigured: "ยังไม่ได้เชื่อมต่อ",
-    connectLine: "เชื่อม LINE OA ภายหลังได้",
     reserved: "คิวที่จองแล้ว",
     newOrder: "คำสั่งซื้อใหม่",
     why: "ออกแบบมาเพื่อคุณ",
@@ -474,7 +466,6 @@ const dictionary = {
     shipProvider: "Carrier",
     trackingNumber: "Tracking number",
     notConfigured: "Not connected",
-    connectLine: "Connect your existing LINE OA later",
     reserved: "Reserved",
     newOrder: "New order",
     why: "Designed around you",
@@ -519,6 +510,13 @@ const loc = (th, en) => (lang === "th" ? th : en);
 dictionary.th.medications = "ประวัติการจ่ายยา";
 dictionary.en.medications = "Medication history";
 let busy = false;
+let lineChecking = false;
+let lineInClient = null;
+let lineError = null;
+let lineAuthentication;
+const touchDevice =
+  matchMedia("(pointer: coarse)").matches ||
+  /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 async function sending(work, title = loc("กำลังบันทึก…", "Saving…")) {
   if (busy) return;
   busy = true;
@@ -704,11 +702,46 @@ function orderList() {
   return `${sectionHeader(t("myOrders"), t("trackDesc"))}${!me.customer ? loginPrompt() : orders.length ? orders.map((o) => `<div class="list-card"><div><span class="eyebrow">${esc(o.order_ref)}</span><h3>${fmtTHB(o.amount)}</h3><p>${o.items.map((i) => esc(lang === "th" ? i.title_th : i.title_en) + " ×" + i.qty).join(" · ")}</p>${o.tracking_no ? `<p>${t("track")}: ${esc(o.carrier)} · ${esc(o.tracking_no)}</p>` : ""}</div><div>${statusTag(o.status)}<p class="tiny-muted">${o.payment_status === "verified" ? t("paid") : t("unpaid")}</p></div></div>`).join("") : `<div class="card empty">${ico("package")}<h3>${t("nothingOrdered")}</h3><button class="btn primary" data-nav="/shop">${t("browse")}</button></div>`}`;
 }
 function loginPrompt() {
-  return `<section class="card login-card"><div class="profile-badge">${ico("user")}</div><h3>${t("signIn")}</h3><p>${t("loginDesc")}</p><div style="display:grid;gap:9px;margin-top:19px">${config.liffId ? `<button class="btn primary" data-action="line-login">${t("loginLine")} ${ico("arrow")}</button>` : ""}${config.demo ? `<button class="btn ${config.liffId ? "outline" : "primary"}" data-action="demo-login">${t("demoLogin")} ${ico("arrow")}</button>` : ""}</div><p class="caption-note">${config.demo ? t("demoNote") : t("connectLine")}</p></section>`;
+  const available = config.liffId && config.lineReady !== false;
+  const error =
+    lineError ||
+    (!available && !config.demo
+      ? lineSignInError("LINE_NOT_CONFIGURED")
+      : null);
+  const launch =
+    available && lineEntryUrl(location.href, page.slice(1), config.liffId);
+  const reopenInLine =
+    lineInClient &&
+    [
+      "LINE_LOGIN_INCOMPLETE",
+      "LINE_TOKEN_MISSING",
+      "LINE_TOKEN_EXPIRED",
+      "LINE_TOKEN_INVALID",
+      "LINE_SESSION_NOT_SAVED",
+    ].includes(error?.code);
+  const showLineApp =
+    launch && ((touchDevice && !lineInClient) || reopenInLine);
+  const openLine = showLineApp
+    ? `<a class="btn primary" href="${esc(launch)}" data-line-open>${reopenInLine ? loc("เปิดคลินิกใน LINE ใหม่", "Reopen clinic in LINE") : loc("เปิดในแอป LINE", "Open in LINE")} ${ico("arrow")}</a>`
+    : "";
+  const browserButton =
+    available && !reopenInLine
+      ? `<button class="btn ${showLineApp ? "outline" : "primary"}" data-action="line-login">${showLineApp ? loc("เข้าสู่ระบบบนเว็บ", "Sign in on the web") : t("loginLine")} ${ico("arrow")}</button>`
+      : "";
+  const problem = error
+    ? `<div class="member-login-error" role="alert" tabindex="-1"><strong>${loc("ยังเข้าใช้งานไม่ได้", "Couldn't sign in")}</strong><p>${esc(care.errorText(error))}</p></div>`
+    : "";
+  const support =
+    error && config.lineOaUrl
+      ? `<a class="btn outline" href="${esc(config.lineOaUrl)}">${t("help")}</a>`
+      : "";
+  const controls = lineChecking
+    ? `<p class="member-login-status" role="status">${loc("กำลังเชื่อมบัญชี LINE กรุณารอสักครู่", "Connecting to LINE. Please wait.")}</p>`
+    : `${problem}<div class="member-login-actions">${openLine}${browserButton}${support}${config.demo ? `<button class="btn primary" data-action="demo-login">${t("demoLogin")}</button>` : ""}</div>`;
+  return `<section class="card login-card member-login"><div class="profile-badge">${ico("user")}</div><h3>${t("signIn")}</h3><p>${t("loginDesc")}</p>${controls}</section>`;
 }
 function account() {
-  if (!me.customer)
-    return `${sectionHeader(t("myAccount"), t("loginDesc"))}${loginPrompt()}`;
+  if (!me.customer) return `${sectionHeader(t("myAccount"))}${loginPrompt()}`;
   return `${sectionHeader(t("myAccount"), t("lineMember"))}<div class="account-grid">${care.accountCards()}<div class="card account-card"><div class="profile-badge">${ico("user")}</div><h3>${esc(me.customer.display_name)}</h3><p class="muted" style="font-size:12px">${config.demo ? t("demoMember") : t("lineMember")}</p><div class="divider"></div><form data-form="profile"><div class="field"><label>${t("name")}</label><input class="input" name="name" required minlength="2" maxlength="100" value="${esc(me.customer.display_name)}"></div><div class="field"><label>${t("currentLang")}</label><select class="select" name="language"><option value="th" ${lang === "th" ? "selected" : ""}>ภาษาไทย</option><option value="en" ${lang === "en" ? "selected" : ""}>English</option></select></div><button class="btn primary">${t("save")} ${ico("check")}</button></form><div class="divider"></div><h3>${t("phoneSaveTitle")}</h3><p class="muted" style="font-size:13px">${t("phoneSaveHelp")}</p><div class="alert">${ico("info")} ${me.customer.phone_verified ? t("phonePreviouslyVerified") : t("phoneSelfReported")}</div><form data-form="phone-save"><div class="field"><label for="member_phone">${t("phone")}</label><input id="member_phone" class="input" name="phone" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="08XXXXXXXX" pattern="0[0-9]{9}" maxlength="10" value="${esc(me.customer.phone || "")}" required></div><button class="btn primary">${t("phoneSave")} ${ico("check")}</button></form><p class="caption-note">${t("phoneNoSms")}</p><div class="divider"></div><button class="btn outline" data-action="logout">${ico("logout")} ${t("logout")}</button></div></div>`;
 }
 function staffLogin() {
@@ -831,6 +864,10 @@ function orderActions(o, owner) {
 }
 function render() {
   document.documentElement.lang = lang;
+  if (lineChecking && new URLSearchParams(location.search).has("liff.state")) {
+    $root.innerHTML = `<div class="loading-screen"><p class="member-login-status line-startup" role="status">${loc("กำลังเชื่อมบัญชี LINE กรุณารอสักครู่", "Connecting to LINE. Please wait.")}</p></div>`;
+    return;
+  }
   $root.innerHTML = shell(
     page === "/"
       ? care.home()
@@ -886,7 +923,8 @@ async function refreshForPage() {
 
 let lineReady;
 async function getLiff() {
-  if (!config.liffId) throw new Error(t("notConfigured"));
+  if (!config.liffId || config.lineReady === false)
+    throw lineSignInError("LINE_NOT_CONFIGURED");
   lineReady ||= (async () => {
     if (!window.liff)
       await new Promise((resolve, reject) => {
@@ -894,7 +932,7 @@ async function getLiff() {
         script.src = "https://static.line-scdn.net/liff/edge/2/sdk.js";
         const timer = setTimeout(() => {
           script.remove();
-          reject(new Error(t("notConfigured")));
+          reject(lineSignInError("LINE_SDK_UNAVAILABLE"));
         }, 8000);
         script.onload = () => {
           clearTimeout(timer);
@@ -903,11 +941,25 @@ async function getLiff() {
         script.onerror = () => {
           clearTimeout(timer);
           script.remove();
-          reject(new Error(t("notConfigured")));
+          reject(lineSignInError("LINE_SDK_UNAVAILABLE"));
         };
         document.head.append(script);
       });
-    await window.liff.init({ liffId: config.liffId });
+    let timer;
+    try {
+      await Promise.race([
+        window.liff.init({ liffId: config.liffId }),
+        new Promise((_, reject) => {
+          timer = setTimeout(
+            () => reject(lineSignInError("LINE_SDK_UNAVAILABLE")),
+            12000,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+    lineInClient = window.liff.isInClient();
     return window.liff;
   })().catch((e) => {
     lineReady = null;
@@ -916,34 +968,79 @@ async function getLiff() {
   return lineReady;
 }
 
-async function lineLogin() {
-  try {
-    const customer = await sending(
-      async () =>
-        authenticateLineCustomer({
-          liff: await getLiff(),
-          storage: sessionStorage,
-          callbackUrl: location.href,
-          verify: verifyLineCustomer,
-          interactive: true,
-        }),
-      loc("กำลังเข้าสู่ระบบ LINE…", "Signing in with LINE…"),
-    );
-    if (customer) {
-      me.customer = customer;
-      await refreshForPage();
+function resolveLineSignIn(interactive = false) {
+  if (lineAuthentication) return lineAuthentication;
+  if (me.customer) return Promise.resolve(true);
+  const initialUrl = location.href;
+  const returningFromLogin =
+    !interactive && isReturningFromLine(initialUrl, sessionStorage);
+  lineChecking = true;
+  lineError = null;
+  render();
+  lineAuthentication = (async () => {
+    let liff;
+    try {
+      liff = await getLiff();
+      if (location.href !== initialUrl) page = pageFromLocation();
+      const customer = await authenticateLineCustomer({
+        liff,
+        storage: sessionStorage,
+        redirectUri: lineEntryUrl(location.href, page.slice(1)),
+        verify: verifyLineCustomer,
+        interactive,
+        returningFromLogin,
+      });
+      if (customer) me.customer = customer;
+      return Boolean(customer);
+    } catch (error) {
+      lineError =
+        typeof error?.code === "string" && error.code.startsWith("LINE_")
+          ? error
+          : lineSignInError(
+              liff ? "LINE_CLINIC_UNAVAILABLE" : "LINE_SDK_UNAVAILABLE",
+            );
+      return false;
+    } finally {
+      if (returningFromLogin) {
+        sessionStorage.removeItem(lineLoginPendingKey);
+        const callback = new URL(location.href);
+        if (liff && callback.searchParams.has(lineReturnParam)) {
+          callback.searchParams.delete(lineReturnParam);
+          history.replaceState(history.state, "", callback.href);
+        }
+      }
     }
-  } catch (e) {
-    showLineSignInError(e);
+  })().finally(() => {
+    lineChecking = false;
+    lineAuthentication = null;
+    if (interactive || me.customer) render();
+  });
+  return lineAuthentication;
+}
+
+async function lineLogin() {
+  const signedIn = await sending(
+    () => resolveLineSignIn(true),
+    loc("กำลังเข้าสู่ระบบ LINE…", "Signing in with LINE…"),
+  );
+  if (signedIn) await refreshForPage();
+  else if (lineError) {
+    const notice = document.querySelector(".member-login-error");
+    if (notice) notice.focus();
+    else
+      care.showError(
+        lineError,
+        loc("เข้าสู่ระบบ LINE ไม่สำเร็จ", "LINE sign-in failed"),
+      );
   }
 }
 
 async function verifyLineCustomer(idToken) {
-  return (await post("/api/auth/line", { idToken, lang })).customer;
-}
-
-function showLineSignInError(error) {
-  care.showError(error, loc("เข้าสู่ระบบ LINE ไม่สำเร็จ", "LINE sign-in failed"));
+  const { customer } = await post("/api/auth/line", { idToken, lang });
+  const session = (await request("/api/me")).customer;
+  if (!customer?.id || session?.id !== customer.id)
+    throw lineSignInError("LINE_SESSION_NOT_SAVED");
+  return session;
 }
 
 async function linkStaffLine() {
@@ -1014,7 +1111,21 @@ async function handleAction(el) {
     await sending(() => post("/api/auth/logout"));
     sessionStorage.setItem(lineSignedOutKey, "true");
     sessionStorage.removeItem(lineLoginPendingKey);
-    void lineReady?.then(clearExternalLineSession).catch(() => {});
+    const waitForLine = lineReady && lineInClient === null;
+    lineChecking = Boolean(waitForLine);
+    void lineReady
+      ?.then((liff) => {
+        if (sessionStorage.getItem(lineSignedOutKey))
+          clearExternalLineSession(liff);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (waitForLine) {
+          lineChecking = false;
+          render();
+        }
+      });
+    lineError = null;
     care.reset();
     me.customer = null;
     orders = [];
@@ -1155,8 +1266,12 @@ async function submit(form) {
   }
 }
 $root.addEventListener("click", async (e) => {
-  const el = e.target.closest("button,[data-nav],a[data-nav]");
+  const el = e.target.closest("button,[data-nav],a[data-line-open]");
   if (!el || el.dataset.care || busy) return;
+  if (el.hasAttribute("data-line-open")) {
+    rememberLineLogin(sessionStorage);
+    return;
+  }
   if (el.dataset.nav) {
     e.preventDefault();
     q(el.dataset.nav);
@@ -1373,35 +1488,39 @@ const care = createCareUI({
   if (results[2].status === "fulfilled") me = results[2].value;
   if (adminTab === "settings" && me.staff && me.staff.role !== "owner")
     adminTab = "overview";
-  render();
-  if (config.liffId) {
-    const returningFromLogin =
-      sessionStorage.getItem(lineLoginPendingKey) === "true";
+  if (config.liffId && page !== "/staff" && !me.customer) {
+    await resolveLineSignIn();
+  } else {
+    render();
+    const linkStaff =
+      config.liffId &&
+      page === "/staff" &&
+      me.staff &&
+      new URLSearchParams(location.search).get("link_line") === "1";
     try {
-      const liff = await getLiff();
-      if (returningFromLogin) sessionStorage.removeItem(lineLoginPendingKey);
-      if (
-        page === "/staff" &&
-        me.staff &&
-        new URLSearchParams(location.search).get("link_line") === "1"
-      ) {
+      if (linkStaff) {
+        await getLiff();
         history.replaceState({}, "", "/staff");
         await linkStaffLine();
-      } else if (page !== "/staff" && !me.customer && !busy) {
-        const customer = await authenticateLineCustomer({
-          liff,
-          storage: sessionStorage,
-          verify: verifyLineCustomer,
-          returningFromLogin,
-        });
-        if (customer) me.customer = customer;
+      } else if (config.liffId && me.customer) {
+        void getLiff().catch(() => {});
       }
     } catch (error) {
-      if (returningFromLogin) {
-        sessionStorage.removeItem(lineLoginPendingKey);
-        showLineSignInError(error);
-      } else console.warn("LINE session unavailable");
+      care.showError(error);
     }
   }
   await refreshForPage();
 })();
+
+window.addEventListener("pageshow", (event) => {
+  if (
+    event.persisted &&
+    config.liffId &&
+    page !== "/staff" &&
+    !me.customer &&
+    isReturningFromLine(location.href, sessionStorage)
+  ) {
+    lineReady = null;
+    void resolveLineSignIn().then(refreshForPage);
+  }
+});

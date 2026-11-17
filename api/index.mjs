@@ -206,7 +206,7 @@ export async function route(req, res) {
       database: "supabase",
       version: 3,
       release: "3.1",
-      patch: "3.1.1",
+      patch: "3.1.2",
       lineConfigured: !!(cfg.lineLogin && cfg.lineToken),
     });
   }

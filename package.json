@@ -1,6 +1,6 @@
 {
   "name": "suwat-clinic-supabase",
-  "version": "3.1.1",
+  "version": "3.1.2",
   "private": true,
   "type": "module",
   "description": "Suwat Clinic TH/EN patient and staff portal for Vercel, Supabase, and LINE",
