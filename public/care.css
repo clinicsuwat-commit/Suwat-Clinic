@@ -1320,3 +1320,163 @@ th {
     transition: none;
   }
 }
+
+.branch-picker {
+  border: 0;
+  margin: 0 0 16px;
+  padding: 0;
+  min-width: 0;
+}
+.branch-picker legend {
+  color: #2c476a;
+  font-size: 15px;
+  font-weight: 760;
+  margin-bottom: 8px;
+  padding: 0;
+}
+.branch-picker > div,
+.location-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.branch-choice {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 68px;
+  padding: 9px 11px;
+  background: #f7faff;
+  border: 1px solid #d8e5f8;
+  border-radius: 13px;
+  cursor: pointer;
+  position: relative;
+}
+.branch-choice:has(input:checked) {
+  border-color: #2d6ad1;
+  background: #ecf5ff;
+  box-shadow: 0 0 0 2px #d8e9ff;
+}
+.branch-choice:focus-within {
+  box-shadow: 0 0 0 3px #c0dbff;
+}
+.branch-choice strong {
+  font-size: 15px;
+}
+.branch-choice input {
+  margin: 0;
+  accent-color: #164eaf;
+  width: 17px;
+  height: 17px;
+  flex: none;
+}
+.branch-choice .tile-icon {
+  width: 34px;
+  height: 34px;
+}
+.branch-choice .tile-icon .icon {
+  width: 19px;
+  height: 19px;
+}
+.branch-map-link {
+  text-decoration: none;
+  min-height: 40px;
+}
+.desk-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+.desk-filters .care-field {
+  flex: 1;
+}
+.clinical-section {
+  margin-top: 15px;
+}
+.clinical-section > h3,
+.clinic-stock h3 {
+  margin-top: 0;
+}
+.location-settings > form {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #f8fbff;
+  padding: 14px;
+}
+.location-settings h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.location-settings h4 .icon {
+  color: #184fac;
+}
+.location-settings .care-actions {
+  margin: 0;
+}
+.clinic-stock {
+  display: grid;
+  gap: 14px;
+}
+.dose-presets {
+  margin: 11px 0;
+  font-size: 14px;
+  color: #254970;
+  font-weight: 720;
+}
+.dose-presets .care-actions {
+  margin: 5px 0 0;
+}
+.dose-presets .btn,
+.drug-input-row > .btn {
+  min-height: 40px;
+  font-size: 13px;
+}
+.dose-grid {
+  margin-top: 11px;
+}
+.dose-estimate {
+  min-height: 1em;
+  color: #21529b;
+  font-weight: 750;
+  margin: 10px 0 0;
+}
+.dose-summary,
+.med-set-summary {
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: #eef5ff;
+  color: #214975;
+}
+.med-set-summary {
+  display: grid;
+  gap: 4px;
+  margin: 12px 0 4px;
+}
+.med-set-summary > strong {
+  color: #133f87;
+}
+[data-refill-opening] {
+  color: #345c8f;
+  grid-column: 1/-1;
+}
+@media (max-width: 570px) {
+  .location-settings {
+    grid-template-columns: 1fr;
+  }
+  .branch-choice {
+    gap: 7px;
+    padding: 8px;
+  }
+  .branch-choice .tile-icon {
+    display: none;
+  }
+}
+.dose-presets .btn[aria-pressed="true"] {
+  background: #164eaf;
+  color: #fff;
+}

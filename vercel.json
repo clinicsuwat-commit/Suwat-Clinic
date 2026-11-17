@@ -21,6 +21,10 @@
       "destination": "/api/index?route=:path*"
     },
     {
+      "source": "/manager",
+      "destination": "/index.html"
+    },
+    {
       "source": "/staff",
       "destination": "/index.html"
     },

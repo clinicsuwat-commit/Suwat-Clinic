@@ -1,3 +1,4 @@
+import { branchId, branchMap, locations } from "../lib/locations.mjs";
 import { clinicRoute, clinicPublicConfig } from "../lib/clinic.mjs";
 // Suwat Clinic API v2. Runs in a Vercel Node.js Function and in dev.mjs.
 // All database operations happen on the server; no privileged key reaches the browser.
@@ -68,8 +69,10 @@ async function setting(k, defaultValue = "") {
     defaultValue
   );
 }
-async function available(date) {
-  return await rpc("sw_available", { p_date: date });
+async function available(date, branch = null) {
+  return branch
+    ? rpc("sw_available_at", { p_date: date, p_branch: branch })
+    : rpc("sw_available", { p_date: date });
 }
 async function products() {
   const p = await rows("sw_products", {
@@ -180,15 +183,29 @@ export async function route(req, res) {
       title: "Suwat Clinic",
       ...clinicPublicConfig(),
     });
+  if (method === "GET" && path === "/api/locations")
+    return reply(res, 200, { locations: await locations() });
+  const mapPath = path.match(/^\/api\/locations\/([a-z]+)\/map$/);
+  if (method === "GET" && mapPath) {
+    const map = await branchMap(mapPath[1]);
+    res.writeHead(302, {
+      Location: map,
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+    });
+    res.end();
+    return;
+  }
   if (method === "GET" && path === "/api/health") {
     const [x] = await Promise.all([
       first("sw_slot_rules", { select: "key" }),
-      first("sw_patients", { select: "id" }),
+      first("sw_clinic_locations", { select: "id" }),
     ]);
     return reply(res, 200, {
       ok: !!x,
       database: "supabase",
       version: 3,
+      release: "3.1",
       lineConfigured: !!(cfg.lineLogin && cfg.lineToken),
     });
   }
@@ -197,7 +214,10 @@ export async function route(req, res) {
     if (!isDate(date)) throw fail(400, "Invalid date");
     return reply(res, 200, {
       date,
-      slots: await available(date),
+      slots: await available(
+        date,
+        branchId(url.searchParams.get("branch"), true),
+      ),
       mode: await setting("booking_mode", "auto"),
     });
   }
@@ -308,7 +328,8 @@ export async function route(req, res) {
     const c = requireUser(await customer(req));
     return reply(res, 200, {
       bookings: await rows("sw_bookings", {
-        select: "id,booking_ref,patient_name,date,slot_key,status,created_at",
+        select:
+          "id,booking_ref,patient_name,date,slot_key,status,created_at,branch_id",
         customer_id: eq(c.id),
         order: "date.desc,id.desc",
         limit: 100,
@@ -367,7 +388,11 @@ export async function route(req, res) {
     );
     if (!out.length) throw fail(409, "Booking already updated");
     try {
-      await rpc("sw_offer_waitlist", { p_date: b.date, p_slot: b.slot_key });
+      await rpc("sw_offer_waitlist_at", {
+        p_date: b.date,
+        p_slot: b.slot_key,
+        p_branch: b.branch_id ?? null,
+      });
       await deliver();
     } catch (e) {
       console.error("Booking cancellation notice failed:", e.message);
@@ -473,7 +498,7 @@ export async function route(req, res) {
           ? Promise.resolve([])
           : rows("sw_bookings", {
               select:
-                "id,booking_ref,patient_name,date,slot_key,status,created_at",
+                "id,booking_ref,patient_name,date,slot_key,status,created_at,branch_id",
               date: eq(date),
               order: "id.desc",
               limit: 150,
@@ -557,9 +582,10 @@ export async function route(req, res) {
     if (["confirmed", "cancelled", "no_show"].includes(data.status)) {
       try {
         if (data.status !== "confirmed")
-          await rpc("sw_offer_waitlist", {
+          await rpc("sw_offer_waitlist_at", {
             p_date: b.date,
             p_slot: b.slot_key,
+            p_branch: b.branch_id ?? null,
           });
         await deliver();
       } catch {
@@ -669,11 +695,25 @@ export async function route(req, res) {
       key: eq(key),
     });
     if (!exists) throw fail(404, "Slot not found");
-    await upsert(
-      "sw_date_overrides",
-      { date: data.date, slot_key: key, capacity, closed: !!data.closed },
-      "date,slot_key",
-    );
+    const branch = branchId(data.branch_id, true);
+    if (branch)
+      await upsert(
+        "sw_branch_date_slots",
+        {
+          branch_id: branch,
+          date: data.date,
+          slot_key: key,
+          capacity,
+          closed: !!data.closed,
+        },
+        "branch_id,date,slot_key",
+      );
+    else
+      await upsert(
+        "sw_date_overrides",
+        { date: data.date, slot_key: key, capacity, closed: !!data.closed },
+        "date,slot_key",
+      );
     await audit("staff:" + s.id, "slot.override", data.date, { key, capacity });
     return reply(res, 200, { slots: await available(data.date) });
   }

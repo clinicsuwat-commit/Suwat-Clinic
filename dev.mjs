@@ -38,6 +38,7 @@ const aliases = new Set([
   "/shop",
   "/staff",
   "/admin",
+  "/manager",
   "/appointments",
   "/orders",
   "/account",

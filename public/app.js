@@ -79,10 +79,11 @@ let page = (
     "/medications",
     "/staff",
     "/admin",
+    "/manager",
   ].includes(location.pathname)
     ? location.pathname
     : "/"
-).replace("/admin", "/staff");
+).replace(/^\/(?:admin|manager)$/, "/staff");
 if (
   [
     "booking",
@@ -98,12 +99,13 @@ if (
 let lineGroups = { groups: [], active: "" };
 let config = { demo: false, liffId: "" },
   me = { customer: null, staff: null },
+  allProducts = [],
   orders = [],
   staffData = null,
   orderResult = null,
   cart = {},
   cartOpen = false,
-  adminTab = "overview",
+  adminTab = location.pathname === "/manager" ? "settings" : "overview",
   loading = false;
 try {
   cart = JSON.parse(localStorage.getItem("sc_cart") || "{}");
@@ -724,7 +726,10 @@ function staff() {
     ["overview", t("dashboard")],
     ["queue", t("queue")],
     ...(user.clinical_access && !store
-      ? [["refills", loc("คำขอชุดยาเดิม", "Medication requests")]]
+      ? [
+          ["med-stock", loc("สต็อกยา", "Medication stock")],
+          ["refills", loc("คำขอชุดยาเดิม", "Medication requests")],
+        ]
       : []),
     ["tasks", t("tasks")],
     ["orders", t("staffOrders")],
@@ -734,12 +739,14 @@ function staff() {
     ([key]) =>
       owner ||
       (reception
-        ? ["overview", "queue", "tasks", "refills"].includes(key)
+        ? ["overview", "queue", "tasks", "refills", "med-stock"].includes(key)
         : ["overview", "orders", "tasks"].includes(key)),
   );
   const tabNav = `<div class="admin-tabs">${tabs.map(([key, label]) => `<button class="${adminTab === key ? "active" : ""}" data-tab="${key}">${label}</button>`).join("")}</div>`;
   let content = "";
   if (adminTab === "overview" && !store) content = care.staffOverview(user);
+  if (adminTab === "med-stock" && user.clinical_access)
+    content = care.staffStock();
   if (adminTab === "refills" && user.clinical_access)
     content = care.staffRefills();
   if (adminTab === "overview" && store)
@@ -752,14 +759,15 @@ function staff() {
   if (adminTab === "tasks")
     content = `<div class="card"><h3>${t("tasks")}</h3>${tasks.map((x) => taskRow(x)).join("") || `<div class="empty">${t("noTasks")}</div>`}</div>`;
   if (adminTab === "queue")
-    content = `<div class="card"><div class="section-header"><div><h3>${t("bookingsToday")}</h3><p>${displayDate(staffData.date)}</p></div><input type="date" id="staffDate" value="${staffData.date}" class="input" style="width:174px"></div><div class="table-wrap"><table><thead><tr><th>${t("bookingRef")}</th><th>${t("name")}</th><th>${t("slot")}</th><th>${t("status")}</th><th>${t("actions")}</th></tr></thead><tbody>${rows.map((b) => `<tr><td><strong>${esc(b.booking_ref)}</strong></td><td>${esc(b.patient_name)}</td><td>${esc(b.slot_key)}</td><td>${statusTag(b.status)}</td><td>${bookingActions(b)}</td></tr>`).join("") || `<tr><td colspan="5">${t("nothingBooked")}</td></tr>`}</tbody></table></div></div>`;
+    content = `<div class="card"><div class="section-header"><div><h3>${t("bookingsToday")}</h3><p>${displayDate(staffData.date)}</p></div><input type="date" id="staffDate" value="${staffData.date}" class="input" style="width:174px"></div><div class="table-wrap"><table><thead><tr><th>${t("bookingRef")}</th><th>${t("name")}</th><th>${t("slot")}</th><th>${t("status")}</th><th>${t("actions")}</th></tr></thead><tbody>${rows.map((b) => `<tr><td><strong>${esc(b.booking_ref)}</strong></td><td>${esc(b.patient_name)}<br><span class="tiny-muted">${esc(care.branchName(b.branch_id))}</span></td><td>${esc(b.slot_key)}</td><td>${statusTag(b.status)}</td><td>${bookingActions(b)}</td></tr>`).join("") || `<tr><td colspan="5">${t("nothingBooked")}</td></tr>`}</tbody></table></div></div>`;
   if (adminTab === "orders")
     content = `<div class="card"><h3>${t("staffOrders")}</h3><div class="table-wrap"><table><thead><tr><th>${t("orderRef")}</th><th>${t("total")}</th><th>${t("status")}</th><th>${t("actions")}</th></tr></thead><tbody>${orows.map((o) => `<tr><td><strong>${esc(o.order_ref)}</strong><br><span class="tiny-muted">${esc(o.delivery_method)}</span></td><td>${fmtTHB(o.amount)}<br><span class="tiny-muted">${o.payment_status === "verified" ? t("paid") : t("unpaid")}</span></td><td>${statusTag(o.status)}</td><td>${orderActions(o, owner)}</td></tr>`).join("") || `<tr><td colspan="4">${t("nothingOrdered")}</td></tr>`}</tbody></table></div></div>`;
   if (adminTab === "inventory")
     content = `<div class="card"><h3>${t("inventory")}</h3><div class="table-wrap"><table><thead><tr><th>SKU</th><th>${t("product")}</th><th>${t("stock")}</th><th>${t("total")}</th></tr></thead><tbody>${prd.map((p) => `<tr><td>${esc(p.sku)}</td><td>${esc(pName(p))}</td><td><span class="tag ${p.stock < 5 ? "warn" : ""}">${p.stock}</span></td><td>${fmtTHB(p.price)}</td></tr>`).join("")}</tbody></table></div><div class="divider"></div><h3>${t("restock")}</h3><form data-form="restock" class="stock-form"><div class="field"><label>${t("product")}</label><select class="select" name="product_id">${prd.map((p) => `<option value="${p.id}">${esc(pName(p))}</option>`).join("")}</select></div><div class="field"><label>${t("lot")}</label><input class="input" name="lot_no" required placeholder="LOT-001"></div><div class="field"><label>${t("quantity")}</label><input class="input" name="qty" type="number" min="1" max="100000" value="10" required></div><div class="field"><label>${t("expiry")}</label><input class="input" name="expiry_date" type="date" min="${today()}" value="${later(365)}" required></div><button class="btn primary">${t("addStock")}</button></form><div class="divider"></div><h3>${t("addProduct")}</h3><form data-form="product-create" class="stock-form"><div class="field"><label>SKU</label><input class="input" name="sku" required maxlength="32"></div><div class="field"><label>ชื่อภาษาไทย</label><input class="input" name="title_th" required></div><div class="field"><label>English name</label><input class="input" name="title_en" required></div><div class="field"><label>ราคา (฿)</label><input class="input" type="number" name="price" min="0" required></div><button class="btn primary">${t("addProduct")}</button></form></div>`;
   if (adminTab === "settings")
-    content = `<div class="config-grid"><div class="card"><h3>${t("slotSetting")}</h3><p class="muted">${t("capacity")}</p><form data-form="slots">${slotData.map((s) => `<div class="field"><label>${s.start}–${s.end} (${esc(sLabel(s))})</label><input class="input" name="capacity_${esc(s.key)}" type="number" min="0" max="500" value="${s.capacity}" required></div>`).join("")}<button class="btn primary">${t("saveSettings")}</button></form></div><div class="card"><h3>${t("mode")}</h3><form data-form="mode"><div class="field"><select class="select" name="mode"><option value="auto" ${staffData.booking_mode === "auto" ? "selected" : ""}>${t("auto")}</option><option value="manual" ${staffData.booking_mode === "manual" ? "selected" : ""}>${t("manual")}</option></select></div><button class="btn primary">${t("saveSettings")}</button></form><div class="divider"></div><h3>${t("dateOverride")}</h3><form data-form="override"><div class="field"><label>${t("date")}</label><input class="input" type="date" name="date" min="${today()}" value="${staffData.date}" required></div><div class="field"><label>${t("slot")}</label><select class="select" name="key">${slotData.map((s) => `<option value="${esc(s.key)}">${s.start}–${s.end}</option>`).join("")}</select></div><div class="field"><label>${t("capacity")}</label><input class="input" type="number" name="capacity" value="6" min="0" max="500" required></div><button class="btn outline">${t("saveSettings")}</button></form></div></div>`;
+    content = `<div class="config-grid"><div class="card"><h3>${t("slotSetting")}</h3><p class="muted">${t("capacity")}</p><form data-form="slots">${slotData.map((s) => `<div class="field"><label>${s.start}–${s.end} (${esc(sLabel(s))})</label><input class="input" name="capacity_${esc(s.key)}" type="number" min="0" max="500" value="${s.capacity}" required></div>`).join("")}<button class="btn primary">${t("saveSettings")}</button></form></div><div class="card"><h3>${t("mode")}</h3><form data-form="mode"><div class="field"><select class="select" name="mode"><option value="auto" ${staffData.booking_mode === "auto" ? "selected" : ""}>${t("auto")}</option><option value="manual" ${staffData.booking_mode === "manual" ? "selected" : ""}>${t("manual")}</option></select></div><button class="btn primary">${t("saveSettings")}</button></form><div class="divider"></div><h3>${t("dateOverride")}</h3><form data-form="override">${care.branchSelect("branch_id", "", "", false, true)}<div class="field"><label>${t("date")}</label><input class="input" type="date" name="date" min="${today()}" value="${staffData.date}" required></div><div class="field"><label>${t("slot")}</label><select class="select" name="key">${slotData.map((s) => `<option value="${esc(s.key)}">${s.start}–${s.end}</option>`).join("")}</select></div><div class="field"><label>${t("capacity")}</label><input class="input" type="number" name="capacity" value="6" min="0" max="500" required></div><button class="btn outline">${t("saveSettings")}</button></form></div></div>`;
   if (adminTab === "settings" && owner) {
+    content += care.locationSettings();
     content += care.staffPermissions();
     content += `<div class="card" style="margin-top:17px"><h3>LINE Staff Group / กลุ่มแจ้งเตือนพนักงาน</h3><p class="muted">Invite the existing LINE OA to the staff group, enable webhooks and choose a verified group seen by the webhook. Do not use a patient group.</p><form data-form="line-group"><div class="field"><select class="select" name="group_id" required><option value="">${t("chooseSlot")}</option>${lineGroups.groups.map((g) => `<option value="${esc(g.group_id)}" ${g.group_id === lineGroups.active ? "selected" : ""}>${esc(g.group_id.slice(0, 16))}…</option>`).join("")}</select></div><button class="btn primary" ${lineGroups.groups.length < 1 ? "disabled" : ""}>${t("saveSettings")}</button></form></div>`;
   }
@@ -781,6 +789,12 @@ function bookingActions(b) {
     ],
     checked_in: [["completed", t("completed")]],
   };
+  const assign =
+    !b.branch_id &&
+    b.date >= today() &&
+    ["pending", "confirmed", "checked_in"].includes(b.status)
+      ? `<button class="btn outline small-btn" data-care="assign-branch" data-value="${b.id}">${ico("location")}${loc("กำหนดสาขา", "Assign branch")}</button>`
+      : "";
   return `<div class="btn-group">${
     (map[b.status] || [])
       .map(([status, label]) =>
@@ -788,8 +802,8 @@ function bookingActions(b) {
           ? `<button class="btn soft small-btn" data-care="scanner">${ico("scan")} ${label}</button>`
           : `<button class="btn outline small-btn" data-book-status="${b.id}:${status}">${label}</button>`,
       )
-      .join("") || "—"
-  }</div>`;
+      .join("") || ""
+  }${assign}</div>`;
 }
 function orderActions(o, owner) {
   const map = {
@@ -856,6 +870,8 @@ async function refreshForPage() {
     render();
     if (current === "/appointments")
       void care.followLink().catch(care.showError);
+    if (current === "/medications")
+      void care.followRefillLink().catch(care.showError);
   }
 }
 
@@ -1050,7 +1066,10 @@ async function submit(form) {
         password: d.password,
       });
       me.staff = r.staff;
-      adminTab = "overview";
+      adminTab =
+        location.pathname === "/manager" && r.staff.role === "owner"
+          ? "settings"
+          : "overview";
       showToast(t("success"));
       await refreshForPage();
     }
@@ -1074,6 +1093,7 @@ async function submit(form) {
         key: d.key,
         capacity: Number(d.capacity),
         closed: Number(d.capacity) === 0,
+        branch_id: d.branch_id,
       });
       showToast(t("success"));
       staffData.date = d.date;
@@ -1291,7 +1311,9 @@ $root.addEventListener("submit", async (e) => {
 });
 window.addEventListener("popstate", () => {
   care.closeModal(false);
-  page = location.pathname === "/admin" ? "/staff" : location.pathname;
+  page = /^\/(?:admin|manager)$/.test(location.pathname)
+    ? "/staff"
+    : location.pathname;
   refreshForPage();
 });
 const care = createCareUI({
@@ -1328,6 +1350,8 @@ const care = createCareUI({
   if (results[1].status === "fulfilled")
     allProducts = results[1].value.products;
   if (results[2].status === "fulfilled") me = results[2].value;
+  if (adminTab === "settings" && me.staff && me.staff.role !== "owner")
+    adminTab = "overview";
   render();
   if (config.liffId) {
     try {

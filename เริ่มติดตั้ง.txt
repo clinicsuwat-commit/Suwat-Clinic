@@ -1,11 +1,9 @@
-Suwat Clinic v3
+Suwat Clinic v3.1
 
-อัปเดตจาก v2.2
-1. รัน sql/03_clinic_v3.sql ใน Supabase SQL Editor
-2. แตก ZIP แล้วคัดลอกไฟล์ทั้งหมดไปยังรากของ Repo เดิม
-3. Push ขึ้น GitHub และตรวจ Vercel ให้สถานะ Ready
-4. ตั้ง CRON_SECRET ใน Vercel Production หากยังไม่มี แล้ว Redeploy
-5. เปิด /api/health ตรวจ version 3 แล้วใช้บัญชี Owner เข้า /staff
-6. ตั้งสิทธิ์ด้านยาของสตาฟในแท็บตั้งค่า
-
-ดูรายละเอียดการตั้งค่า LINE และวิธีทดสอบใน README.md
+1. เปิด README.md แล้วตรวจเวอร์ชันเดิม
+2. ถ้าใช้ v3.0 ให้รัน sql/04_branches_medication_stock.sql ใน Supabase
+3. แตก ZIP แล้วคัดลอกไฟล์ทั้งหมดไปที่รากของ GitHub Repository เดิม จากนั้น Push
+4. เปิด /api/health ตรวจ release 3.1 หลัง Vercel พร้อมใช้งาน
+5. Owner เข้า /manager → สาขาและแผนที่ แล้วบันทึกพิกัดอุบลกับยโสธร
+6. สตาฟที่ได้รับสิทธิ์เข้า /staff → สต็อกยา เพื่อเพิ่มรายการและรับยาตามล็อตของแต่ละสาขา
+7. ทดสอบกล้องและการรับข้อความ LINE OA ของคลินิกด้วยบัญชีทดสอบตาม README.md
